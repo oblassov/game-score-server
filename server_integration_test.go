@@ -8,7 +8,18 @@ import (
 )
 
 func TestRecordingWinsAndRetrievingThem(t *testing.T) {
-	store := NewInMemoryPlayerStore()
+	database, cleanDatabase := createTempFile(t, `[]`)
+	defer cleanDatabase()
+
+	// db, err := os.OpenFile(dbFileName, os.O_RDWR|os.O_CREATE, 0666)
+	//
+	// if err != nil {
+	// 	log.Fatalf("problem opening %s %v", dbFileName, err)
+	// }
+
+	store, err := NewFileSystemPlayerStore(database)
+	assertNoError(t, err)
+
 	server := NewPlayerServer(store)
 
 	player := "Pepper"
