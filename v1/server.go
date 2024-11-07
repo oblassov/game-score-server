@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"encoding/json"
@@ -32,12 +32,19 @@ func NewPlayerServer(store PlayerStore) *PlayerServer {
 
 	router := http.NewServeMux()
 
+	router.Handle("/", http.HandlerFunc(p.pageHandler))
 	router.Handle("/league", http.HandlerFunc(p.leagueHandler))
 	router.Handle("/players/", http.HandlerFunc(p.playersHandler))
 
 	p.Handler = router
 
 	return p
+}
+
+func (p *PlayerServer) pageHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "Hello, run cli tool to record score!")
+	fmt.Fprintln(w, "/players/$playername to check a player")
+	fmt.Fprint(w, "/league to check the league")
 }
 
 func (p *PlayerServer) leagueHandler(w http.ResponseWriter, r *http.Request) {

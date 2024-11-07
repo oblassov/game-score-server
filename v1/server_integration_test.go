@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"net/http"
@@ -11,14 +11,8 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 	database, cleanDatabase := createTempFile(t, `[]`)
 	defer cleanDatabase()
 
-	// db, err := os.OpenFile(dbFileName, os.O_RDWR|os.O_CREATE, 0666)
-	//
-	// if err != nil {
-	// 	log.Fatalf("problem opening %s %v", dbFileName, err)
-	// }
-
 	store, err := NewFileSystemPlayerStore(database)
-	assertNoError(t, err)
+	AssertNoError(t, err)
 
 	server := NewPlayerServer(store)
 
@@ -41,20 +35,20 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, newGetScoreRequest(player))
 
-		assertStatus(t, response.Code, http.StatusOK)
-		assertResponseBody(t, response.Body.String(), "1000")
+		AssertStatus(t, response.Code, http.StatusOK)
+		AssertResponseBody(t, response.Body.String(), "1000")
 	})
 
 	t.Run("get league", func(t *testing.T) {
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, newLeagueRequest())
-		assertStatus(t, response.Code, http.StatusOK)
+		AssertStatus(t, response.Code, http.StatusOK)
 
 		got := getLeagueFromResponse(t, response.Body)
 		want := []Player{
-			{"Pepper", 1000},
+			{"Pepper", wantedCount},
 		}
 
-		assertLeague(t, got, want)
+		AssertLeague(t, got, want)
 	})
 }

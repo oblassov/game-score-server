@@ -1,16 +1,40 @@
-package main
+package game
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sort"
+	"sync"
 )
 
 type FileSystemPlayerStore struct {
 	database *json.Encoder
 	league   League
+	lock     sync.RWMutex
+}
+
+func FileSystemPlayerStoreFromFile(path string) (*FileSystemPlayerStore, func(), error) {
+
+	db, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0666)
+
+	if err != nil {
+		log.Fatalf("problem opening %s %v", path, err)
+	}
+
+	closeFunc := func() {
+		db.Close()
+	}
+
+	store, err := NewFileSystemPlayerStore(db)
+
+	if err != nil {
+		log.Fatalf("problem creating file system store, %v", err)
+	}
+
+	return store, closeFunc, err
 }
 
 func NewFileSystemPlayerStore(file *os.File) (*FileSystemPlayerStore, error) {
@@ -53,6 +77,8 @@ func initializePlayerDBFile(file *os.File) error {
 }
 
 func (f *FileSystemPlayerStore) GetLeague() League {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
 	sort.Slice(f.league, func(i, j int) bool {
 		return f.league[i].Wins > f.league[j].Wins
 	})
@@ -60,6 +86,8 @@ func (f *FileSystemPlayerStore) GetLeague() League {
 }
 
 func (f *FileSystemPlayerStore) GetPlayerScore(name string) int {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
 
 	player := f.league.Find(name)
 
@@ -71,6 +99,8 @@ func (f *FileSystemPlayerStore) GetPlayerScore(name string) int {
 }
 
 func (f *FileSystemPlayerStore) RecordWin(name string) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
 	player := f.league.Find(name)
 
 	if player != nil {
