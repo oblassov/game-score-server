@@ -1,4 +1,4 @@
-package game_test
+package poker_test
 
 import (
 	"fmt"
@@ -14,30 +14,30 @@ func TestCLI(t *testing.T) {
 
 	t.Run("record Chris win from user input", func(t *testing.T) {
 		in := strings.NewReader("Chris wins\n")
-		playerStore := &game.StubPlayerStore{}
+		playerStore := &poker.StubPlayerStore{}
 
-		cli := game.NewCLI(playerStore, in, dummySpyAlerter)
+		cli := poker.NewCLI(playerStore, in, dummySpyAlerter)
 		cli.PlayGame()
 
-		game.AssertPlayerWin(t, playerStore, "Chris")
+		poker.AssertPlayerWin(t, playerStore, "Chris")
 	})
 
 	t.Run("record Cleo win from user input", func(t *testing.T) {
 		in := strings.NewReader("Cleo wins\n")
-		playerStore := &game.StubPlayerStore{}
+		playerStore := &poker.StubPlayerStore{}
 
-		cli := game.NewCLI(playerStore, in, dummySpyAlerter)
+		cli := poker.NewCLI(playerStore, in, dummySpyAlerter)
 		cli.PlayGame()
 
-		game.AssertPlayerWin(t, playerStore, "Cleo")
+		poker.AssertPlayerWin(t, playerStore, "Cleo")
 	})
 
 	t.Run("it schedules printing of blind values", func(t *testing.T) {
 		in := strings.NewReader("Chris wins\n")
-		playerStore := &game.StubPlayerStore{}
+		playerStore := &poker.StubPlayerStore{}
 		blindAlerter := &SpyBlindAlerter{}
 
-		cli := game.NewCLI(playerStore, in, blindAlerter)
+		cli := poker.NewCLI(playerStore, in, blindAlerter)
 		cli.PlayGame()
 
 		cases := []scheduledAlert{
