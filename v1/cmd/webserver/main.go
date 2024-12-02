@@ -7,7 +7,7 @@ import (
 	"game-server/v1"
 )
 
-const dbFileName = "../game.db.json"
+const dbFileName = "./game.db.json"
 
 func main() {
 

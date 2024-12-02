@@ -1,16 +1,16 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"os"
+	"net/http"
 
-	"game-server/v1"
+	"game-server/v2"
 )
 
 const dbFileName = "./game.db.json"
 
 func main() {
+
 	store, close, err := poker.FileSystemPlayerStoreFromFile(dbFileName)
 
 	if err != nil {
@@ -18,8 +18,9 @@ func main() {
 	}
 	defer close()
 
-	fmt.Println("Let's play poker")
-	fmt.Println("Type {Name} wins to record a win")
+	server := poker.NewPlayerServer(store)
 
-	poker.NewCLI(store, os.Stdin, poker.BlindAlerterFunc(poker.StdOutAlerter)).PlayPoker()
+	if err := http.ListenAndServe(":5000", server); err != nil {
+		log.Fatalf("could not listen on port 5000 %v", err)
+	}
 }
