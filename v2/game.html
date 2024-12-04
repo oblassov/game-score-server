@@ -3,76 +3,162 @@
 
 <head>
 	<meta charset="UTF-8">
-	<title>Lets play poker</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Let's Play Poker</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+			font-family: Arial, sans-serif;
+		}
+
+		body {
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			min-height: 100vh;
+			background-color: #0B6E4F;
+			color: #333;
+		}
+
+		#game,
+		#game-end {
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+			background: #fff;
+			border-radius: 12px;
+			box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+			padding: 40px;
+			width: 90%;
+			max-width: 500px;
+		}
+
+		h1 {
+			margin-bottom: 20px;
+			font-size: 1.8rem;
+			color: #444;
+		}
+
+		label {
+			font-size: 1.2rem;
+			margin-bottom: 10px;
+		}
+
+		input {
+			width: 100%;
+			padding: 10px;
+			margin: 10px 0;
+			font-size: 1rem;
+			border: 2px solid #ddd;
+			border-radius: 8px;
+		}
+
+		button {
+			padding: 10px 20px;
+			font-size: 1rem;
+			color: #fff;
+			background-color: #2575fc;
+			border: none;
+			border-radius: 8px;
+			cursor: pointer;
+			transition: background-color 0.3s ease;
+		}
+
+		button:hover {
+			background-color: #1a5bbd;
+		}
+
+		a {
+			color: #2575fc;
+			text-decoration: none;
+			font-weight: bold;
+		}
+
+		a:hover {
+			text-decoration: underline;
+		}
+
+		#blind-value {
+			margin-top: 20px;
+			font-size: 1.2rem;
+			color: #666;
+		}
+
+		[hidden] {
+			display: none !important;
+		}
+	</style>
 </head>
 
 <body>
 	<section id="game">
 		<div id="game-start">
-			<label for="player-count">Number of players</label>
-			<input type="number" id="player-count" />
-			<button id="start-game">Start</button>
+			<h1>Welcome to Poker!</h1>
+			<label for="player-count">Enter Number of Players:</label>
+			<input type="number" id="player-count" placeholder="Enter a number" />
+			<button id="start-game">Start Game</button>
 		</div>
 
-		<div id="declare-winner">
-			<label for="winner">Winner</label>
-			<input type="text" id="winner" />
-			<button id="winner-button">Declare winner</button>
+		<div id="declare-winner" hidden>
+			<h1>Declare the Winner</h1>
+			<label for="winner">Winner's Name:</label>
+			<input type="text" id="winner" placeholder="Enter winner's name" />
+			<button id="winner-button">Declare Winner</button>
 		</div>
 
-		<div id="blind-value" />
+		<div id="blind-value"></div>
 	</section>
 
-	<section id="game-end">
-		<h1>Another great game of poker everyone!</h1>
-		<p><a href="/league">Go check the league table</a></p>
+	<section id="game-end" hidden>
+		<h1>Another Great Game of Poker!</h1>
+		<p><a href="/league">Check the League Table</a></p>
 	</section>
 
+	<script>
+		const startGame = document.getElementById('game-start');
+		const declareWinner = document.getElementById('declare-winner');
+		const submitWinnerButton = document.getElementById('winner-button');
+		const winnerInput = document.getElementById('winner');
+		const blindContainer = document.getElementById('blind-value');
+		const gameContainer = document.getElementById('game');
+		const gameEndContainer = document.getElementById('game-end');
+
+		// Initially hide sections
+		declareWinner.hidden = true;
+		gameEndContainer.hidden = true;
+
+		document.getElementById('start-game').addEventListener('click', () => {
+			startGame.hidden = true;
+			declareWinner.hidden = false;
+
+			const numberOfPlayers = document.getElementById('player-count').value;
+
+			if (window['WebSocket']) {
+				const conn = new WebSocket('ws://' + document.location.host + '/ws');
+
+				submitWinnerButton.onclick = () => {
+					conn.send(winnerInput.value);
+					gameEndContainer.hidden = false;
+					gameContainer.hidden = true;
+				};
+
+				conn.onclose = () => {
+					blindContainer.innerText = 'Connection closed';
+				};
+
+				conn.onmessage = (evt) => {
+					blindContainer.innerText = evt.data;
+				};
+
+				conn.onopen = () => {
+					conn.send(numberOfPlayers);
+				};
+			}
+		});
+	</script>
 </body>
-
-<script type="application/javascript">
-	const startGame = document.getElementById('game-start')
-
-	const declareWinner = document.getElementById('declare-winner')
-	const submitWinnerButton = document.getElementById('winner-button')
-	const winnerInput = document.getElementById('winner')
-
-	const blindContainer = document.getElementById('blind-value')
-
-	const gameContainer = document.getElementById('game')
-	const gameEndContainer = document.getElementById('game-end')
-
-	declareWinner.hidden = true
-	gameEndContainer.hidden = true
-
-	document.getElementById('start-game').addEventListener('click', event => {
-		startGame.hidden = true
-		declareWinner.hidden = false
-
-		const numberOfPlayers = document.getElementById('player-count').value
-
-		if (window['WebSocket']) {
-			const conn = new WebSocket('ws://' + document.location.host + '/ws')
-
-			submitWinnerButton.onclick = event => {
-				conn.send(winnerInput.value)
-				gameEndContainer.hidden = false
-				gameContainer.hidden = true
-			}
-
-			conn.onclose = evt => {
-				blindContainer.innerText = 'Connection closed'
-			}
-
-			conn.onmessage = evt => {
-				blindContainer.innerText = evt.data
-			}
-
-			conn.onopen = function () {
-				conn.send(numberOfPlayers)
-			}
-		}
-	})
-</script>
 
 </html>

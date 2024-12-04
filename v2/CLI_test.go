@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 var (
@@ -73,10 +74,26 @@ func TestCLI(t *testing.T) {
 func assertFinishCalledWith(t testing.TB, game *poker.GameSpy, winner string) {
 	t.Helper()
 
-	if game.FinishedWith != winner {
+	passed := retryUntil(500*time.Millisecond, func() bool {
+		return game.FinishedWith == winner
+	})
+
+	if !passed {
 		t.Errorf("expected Finish called with %q, but got %q", winner, game.FinishedWith)
 	}
 
+}
+
+func retryUntil(d time.Duration, f func() bool) bool {
+	deadline := time.Now().Add(d)
+
+	for time.Now().Before(deadline) {
+		if f() {
+			return true
+		}
+	}
+
+	return false
 }
 
 func assertGameNotStarted(t testing.TB, game *poker.GameSpy) {
