@@ -1,21 +1,25 @@
-package poker_test
+package server_test
 
 import (
-	"game-server"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
+
+	"github.com/oblassov/game-score-server/internal/engine"
+	"github.com/oblassov/game-score-server/internal/server"
+	"github.com/oblassov/game-score-server/internal/storage/filesystem"
+	"github.com/oblassov/game-score-server/tests"
 )
 
 func TestRecordingWinsAndRetrievingThem(t *testing.T) {
-	database, cleanDatabase := poker.CreateTempFile(t, `[]`)
+	database, cleanDatabase := tests.CreateTempFile(t, `[]`)
 	defer cleanDatabase()
 
-	store, err := poker.NewFileSystemPlayerStore(database)
-	poker.AssertNoError(t, err)
+	store, err := filesystem.NewPlayerStore(database)
+	tests.AssertNoError(t, err)
 
-	server, _ := poker.NewPlayerServer(store, dummyGame)
+	server, _ := server.NewPlayerServer(store, dummyGame)
 
 	player := "Pepper"
 
@@ -23,7 +27,7 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(wantedCount)
 
-	for i := 0; i < wantedCount; i++ {
+	for range wantedCount {
 		go func() {
 			defer wg.Done()
 			server.ServeHTTP(httptest.NewRecorder(), newPostWinRequest(player))
@@ -36,20 +40,20 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, newGetScoreRequest(player))
 
-		poker.AssertStatus(t, response, http.StatusOK)
-		poker.AssertResponseBody(t, response.Body.String(), "1000")
+		tests.AssertStatus(t, response, http.StatusOK)
+		tests.AssertResponseBody(t, response.Body.String(), "1000")
 	})
 
 	t.Run("get league", func(t *testing.T) {
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, newLeagueRequest())
-		poker.AssertStatus(t, response, http.StatusOK)
+		tests.AssertStatus(t, response, http.StatusOK)
 
 		got := getLeagueFromResponse(t, response.Body)
-		want := []poker.Player{
+		want := []engine.Player{
 			{"Pepper", wantedCount},
 		}
 
-		poker.AssertLeague(t, got, want)
+		tests.AssertLeague(t, got, want)
 	})
 }

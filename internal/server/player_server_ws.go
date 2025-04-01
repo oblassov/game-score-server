@@ -1,4 +1,4 @@
-package poker
+package server
 
 import (
 	"log"

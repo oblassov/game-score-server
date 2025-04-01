@@ -1,20 +1,14 @@
-package poker_test
+package cli_test
 
 import (
 	"bytes"
-	"game-server"
 	"io"
 	"strings"
 	"testing"
 	"time"
-)
 
-var (
-	dummyGame         = &poker.GameSpy{}
-	dummyBlindAlerter = &poker.SpyBlindAlerter{}
-	dummyPlayerStore  = &poker.StubPlayerStore{}
-	dummyStdIn        = &bytes.Buffer{}
-	dummyStdOut       = &bytes.Buffer{}
+	"github.com/oblassov/game-score-server/internal/app/cli"
+	"github.com/oblassov/game-score-server/tests"
 )
 
 func TestCLI(t *testing.T) {
@@ -22,24 +16,24 @@ func TestCLI(t *testing.T) {
 	t.Run("it prints an error when a non numeric value is entered and does not start the game", func(t *testing.T) {
 		stdOut := &bytes.Buffer{}
 		in := userSends("pies")
-		game := &poker.GameSpy{}
+		game := &tests.GameSpy{}
 
-		cli := poker.NewCLI(in, stdOut, game)
-		cli.PlayPoker()
+		cliApp := cli.NewCLI(in, stdOut, game)
+		cliApp.PlayPoker()
 
-		assertMessagesSentToUser(t, stdOut, poker.PlayerPrompt, poker.BadPlayerInputErrMsg)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg)
 		assertGameNotStarted(t, game)
 	})
 
 	t.Run("start game with 3 players and finish game with Chris as a winner", func(t *testing.T) {
 		in := userSends("3", "Chris wins")
 		stdOut := &bytes.Buffer{}
-		game := &poker.GameSpy{}
+		game := &tests.GameSpy{}
 
-		cli := poker.NewCLI(in, stdOut, game)
-		cli.PlayPoker()
+		cliApp := cli.NewCLI(in, stdOut, game)
+		cliApp.PlayPoker()
 
-		assertMessagesSentToUser(t, stdOut, poker.PlayerPrompt)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt)
 		assertGameStartedWith(t, game, 3)
 		assertFinishCalledWith(t, game, "Chris")
 	})
@@ -47,12 +41,12 @@ func TestCLI(t *testing.T) {
 	t.Run("start game with 8 players and finish game with Cleo as a winner", func(t *testing.T) {
 		in := userSends("8", "Cleo wins")
 		stdOut := &bytes.Buffer{}
-		game := &poker.GameSpy{}
+		game := &tests.GameSpy{}
 
-		cli := poker.NewCLI(in, stdOut, game)
-		cli.PlayPoker()
+		cliApp := cli.NewCLI(in, stdOut, game)
+		cliApp.PlayPoker()
 
-		assertMessagesSentToUser(t, stdOut, poker.PlayerPrompt)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt)
 		assertGameStartedWith(t, game, 8)
 		assertFinishCalledWith(t, game, "Cleo")
 	})
@@ -60,18 +54,18 @@ func TestCLI(t *testing.T) {
 	t.Run("it prints an error when a winner is declared incorrectly", func(t *testing.T) {
 		in := userSends("7", "Cleo kills")
 		stdOut := &bytes.Buffer{}
-		game := &poker.GameSpy{}
+		game := &tests.GameSpy{}
 
-		cli := poker.NewCLI(in, stdOut, game)
-		cli.PlayPoker()
+		cliApp := cli.NewCLI(in, stdOut, game)
+		cliApp.PlayPoker()
 
 		assertGameNotFinished(t, game)
-		assertMessagesSentToUser(t, stdOut, poker.PlayerPrompt, poker.BadWinnerInputErrMsg)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadWinnerInputErrMsg)
 	})
 
 }
 
-func assertFinishCalledWith(t testing.TB, game *poker.GameSpy, winner string) {
+func assertFinishCalledWith(t testing.TB, game *tests.GameSpy, winner string) {
 	t.Helper()
 
 	passed := retryUntil(500*time.Millisecond, func() bool {
@@ -96,7 +90,7 @@ func retryUntil(d time.Duration, f func() bool) bool {
 	return false
 }
 
-func assertGameNotStarted(t testing.TB, game *poker.GameSpy) {
+func assertGameNotStarted(t testing.TB, game *tests.GameSpy) {
 	t.Helper()
 
 	if game.StartCalled {
@@ -105,7 +99,7 @@ func assertGameNotStarted(t testing.TB, game *poker.GameSpy) {
 
 }
 
-func assertGameNotFinished(t testing.TB, game *poker.GameSpy) {
+func assertGameNotFinished(t testing.TB, game *tests.GameSpy) {
 	t.Helper()
 
 	if game.FinishCalled {
@@ -113,20 +107,11 @@ func assertGameNotFinished(t testing.TB, game *poker.GameSpy) {
 	}
 }
 
-func assertGameStartedWith(t testing.TB, game *poker.GameSpy, numberOfPlayers int) {
+func assertGameStartedWith(t testing.TB, game *tests.GameSpy, numberOfPlayers int) {
 	t.Helper()
 
 	if game.StartedWith != numberOfPlayers {
 		t.Errorf("wanted Start called with %d, but go %d", numberOfPlayers, game.StartedWith)
-	}
-
-}
-
-func assertScheduledAlert(t testing.TB, got, want poker.ScheduledAlert) {
-	t.Helper()
-
-	if got != want {
-		t.Errorf("got %+v, want %+v", got, want)
 	}
 
 }

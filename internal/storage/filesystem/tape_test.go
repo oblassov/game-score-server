@@ -1,12 +1,14 @@
-package poker
+package filesystem
 
 import (
 	"io"
 	"testing"
+
+	"github.com/oblassov/game-score-server/tests"
 )
 
 func TestTape_Write(t *testing.T) {
-	file, clean := CreateTempFile(t, "12345")
+	file, clean := tests.CreateTempFile(t, "12345")
 	defer clean()
 
 	tape := &tape{file: file}

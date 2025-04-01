@@ -1,10 +1,15 @@
-package poker
+package engine
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
 )
+
+type Player struct {
+	Name string
+	Wins int
+}
 
 type League []Player
 

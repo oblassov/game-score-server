@@ -1,4 +1,4 @@
-package poker
+package filesystem
 
 import (
 	"io"

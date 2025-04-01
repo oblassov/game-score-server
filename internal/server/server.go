@@ -1,15 +1,17 @@
-package poker
+package server
 
 import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"github.com/oblassov/game-score-server/internal/engine"
 )
 
 //go:embed game.html
@@ -19,27 +21,16 @@ var wsUpgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-const JsonContentType = "application/json"
-
-type Player struct {
-	Name string
-	Wins int
-}
+const JSONContentType = "application/json"
 
 type PlayerServer struct {
-	store PlayerStore
+	store engine.PlayerStore
 	http.Handler
 	template *template.Template
-	game     Game
+	game     engine.Game
 }
 
-type PlayerStore interface {
-	GetPlayerScore(name string) int
-	RecordWin(name string)
-	GetLeague() League
-}
-
-func NewPlayerServer(store PlayerStore, game Game) (*PlayerServer, error) {
+func NewPlayerServer(store engine.PlayerStore, game engine.Game) (*PlayerServer, error) {
 	p := new(PlayerServer)
 
 	tmpl, err := template.New("game.html").Parse(gameHTML)
@@ -65,16 +56,18 @@ func NewPlayerServer(store PlayerStore, game Game) (*PlayerServer, error) {
 	return p, nil
 }
 
-func (p *PlayerServer) pageHandler(w http.ResponseWriter, r *http.Request) {
+func (p *PlayerServer) pageHandler(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintln(w, "Hello, run cli tool to record score!")
 	fmt.Fprintln(w, "/players/$playername to check a player")
 	fmt.Fprintln(w, "/league to check the league")
 	fmt.Fprint(w, "/game to check the game")
 }
 
-func (p *PlayerServer) leagueHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("content-type", JsonContentType)
-	json.NewEncoder(w).Encode(p.store.GetLeague())
+func (p *PlayerServer) leagueHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("content-type", JSONContentType)
+	if err := json.NewEncoder(w).Encode(p.store.GetLeague()); err != nil {
+		log.Println("couldn't encode the json: ", err)
+	}
 }
 
 func (p *PlayerServer) playersHandler(w http.ResponseWriter, r *http.Request) {
@@ -89,15 +82,21 @@ func (p *PlayerServer) playersHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (p *PlayerServer) playGame(w http.ResponseWriter, r *http.Request) {
-	p.template.Execute(w, nil)
+func (p *PlayerServer) playGame(w http.ResponseWriter, _ *http.Request) {
+	if err := p.template.Execute(w, nil); err != nil {
+		log.Println("couldn't execute the template: ", err)
+	}
 }
 
 func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	ws := newPlayerServerWS(w, r)
 
 	numberOfPlayersMsg := ws.WaitForMsg()
-	numberOfPlayers, _ := strconv.Atoi(numberOfPlayersMsg)
+	numberOfPlayers, err := strconv.Atoi(numberOfPlayersMsg)
+	if err != nil {
+		log.Println("couldn't convert the numberOfPlayers: ", err)
+	}
+
 	p.game.Start(numberOfPlayers, ws)
 
 	winner := ws.WaitForMsg()

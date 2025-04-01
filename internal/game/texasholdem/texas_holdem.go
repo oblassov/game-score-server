@@ -1,16 +1,18 @@
-package poker
+package texasholdem
 
 import (
 	"io"
 	"time"
+
+	"github.com/oblassov/game-score-server/internal/engine"
 )
 
 type TexasHoldem struct {
-	store   PlayerStore
-	alerter BlindAlerter
+	store   engine.PlayerStore
+	alerter engine.BlindAlerter
 }
 
-func NewTexasHoldem(store PlayerStore, alerter BlindAlerter) *TexasHoldem {
+func NewTexasHoldem(store engine.PlayerStore, alerter engine.BlindAlerter) *TexasHoldem {
 	return &TexasHoldem{
 		store:   store,
 		alerter: alerter,

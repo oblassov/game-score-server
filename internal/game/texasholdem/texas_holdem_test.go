@@ -1,21 +1,23 @@
-package poker_test
+package texasholdem_test
 
 import (
 	"fmt"
-	"game-server"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/oblassov/game-score-server/internal/game/texasholdem"
+	"github.com/oblassov/game-score-server/tests"
 )
 
 func TestGame_Start(t *testing.T) {
 	t.Run("schedules alerts on game start for 5 players", func(t *testing.T) {
-		blindAlerter := &poker.SpyBlindAlerter{}
-		game := poker.NewTexasHoldem(dummyPlayerStore, blindAlerter)
+		blindAlerter := &tests.SpyBlindAlerter{}
+		game := texasholdem.NewTexasHoldem(tests.DummyPlayerStore, blindAlerter)
 
 		game.Start(5, io.Discard)
 
-		cases := []poker.ScheduledAlert{
+		cases := []tests.ScheduledAlert{
 			{0 * time.Minute, 100},
 			{10 * time.Minute, 200},
 			{20 * time.Minute, 300},
@@ -33,12 +35,12 @@ func TestGame_Start(t *testing.T) {
 	})
 
 	t.Run("schedules alerts on game start for 7 players", func(t *testing.T) {
-		blindAlerter := &poker.SpyBlindAlerter{}
-		game := poker.NewTexasHoldem(dummyPlayerStore, blindAlerter)
+		blindAlerter := &tests.SpyBlindAlerter{}
+		game := texasholdem.NewTexasHoldem(tests.DummyPlayerStore, blindAlerter)
 
 		game.Start(7, io.Discard)
 
-		cases := []poker.ScheduledAlert{
+		cases := []tests.ScheduledAlert{
 			{0 * time.Minute, 100},
 			{12 * time.Minute, 200},
 			{24 * time.Minute, 300},
@@ -50,15 +52,15 @@ func TestGame_Start(t *testing.T) {
 }
 
 func TestGame_Finish(t *testing.T) {
-	playerStore := &poker.StubPlayerStore{}
-	game := poker.NewTexasHoldem(playerStore, dummyBlindAlerter)
+	playerStore := &tests.StubPlayerStore{}
+	game := texasholdem.NewTexasHoldem(playerStore, tests.DummyBlindAlerter)
 	winner := "Ruth"
 
 	game.Finish(winner)
-	poker.AssertPlayerWin(t, playerStore, winner)
+	tests.AssertPlayerWin(t, playerStore, winner)
 }
 
-func checkSchedulingCases(cases []poker.ScheduledAlert, t *testing.T, blindAlerter poker.SpyBlindAlerter) {
+func checkSchedulingCases(cases []tests.ScheduledAlert, t *testing.T, blindAlerter tests.SpyBlindAlerter) {
 	t.Helper()
 
 	for i, want := range cases {
@@ -71,5 +73,13 @@ func checkSchedulingCases(cases []poker.ScheduledAlert, t *testing.T, blindAlert
 			got := blindAlerter.Alerts[i]
 			assertScheduledAlert(t, got, want)
 		})
+	}
+}
+
+func assertScheduledAlert(t testing.TB, got, want tests.ScheduledAlert) {
+	t.Helper()
+
+	if got != want {
+		t.Errorf("got %+v, want %+v", got, want)
 	}
 }

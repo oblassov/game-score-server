@@ -1,4 +1,4 @@
-package poker
+package filesystem
 
 import (
 	"encoding/json"
@@ -8,17 +8,19 @@ import (
 	"os"
 	"sort"
 	"sync"
+
+	"github.com/oblassov/game-score-server/internal/engine"
 )
 
-type FileSystemPlayerStore struct {
+type PlayerStore struct {
 	database *json.Encoder
-	league   League
+	league   engine.League
 	lock     sync.RWMutex
 }
 
-func FileSystemPlayerStoreFromFile(path string) (*FileSystemPlayerStore, func(), error) {
+func PlayerStoreFromFile(path string) (*PlayerStore, func(), error) {
 
-	db, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0666)
+	db, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666)
 
 	if err != nil {
 		log.Fatalf("problem opening %s %v", path, err)
@@ -28,7 +30,7 @@ func FileSystemPlayerStoreFromFile(path string) (*FileSystemPlayerStore, func(),
 		db.Close()
 	}
 
-	store, err := NewFileSystemPlayerStore(db)
+	store, err := NewPlayerStore(db)
 
 	if err != nil {
 		log.Fatalf("problem creating file system store, %v", err)
@@ -37,7 +39,7 @@ func FileSystemPlayerStoreFromFile(path string) (*FileSystemPlayerStore, func(),
 	return store, closeFunc, err
 }
 
-func NewFileSystemPlayerStore(file *os.File) (*FileSystemPlayerStore, error) {
+func NewPlayerStore(file *os.File) (*PlayerStore, error) {
 
 	err := initializePlayerDBFile(file)
 
@@ -45,13 +47,13 @@ func NewFileSystemPlayerStore(file *os.File) (*FileSystemPlayerStore, error) {
 		return nil, fmt.Errorf("problem initializing player db file %v", err)
 	}
 
-	league, err := NewLeague(file)
+	league, err := engine.NewLeague(file)
 
 	if err != nil {
 		return nil, fmt.Errorf("problem loading player store from file %s, %v", file.Name(), err)
 	}
 
-	return &FileSystemPlayerStore{
+	return &PlayerStore{
 		database: json.NewEncoder(&tape{file}),
 		league:   league,
 	}, nil
@@ -76,7 +78,7 @@ func initializePlayerDBFile(file *os.File) error {
 
 }
 
-func (f *FileSystemPlayerStore) GetLeague() League {
+func (f *PlayerStore) GetLeague() engine.League {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 	sort.Slice(f.league, func(i, j int) bool {
@@ -85,7 +87,7 @@ func (f *FileSystemPlayerStore) GetLeague() League {
 	return f.league
 }
 
-func (f *FileSystemPlayerStore) GetPlayerScore(name string) int {
+func (f *PlayerStore) GetPlayerScore(name string) int {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 
@@ -98,7 +100,7 @@ func (f *FileSystemPlayerStore) GetPlayerScore(name string) int {
 	return 0
 }
 
-func (f *FileSystemPlayerStore) RecordWin(name string) {
+func (f *PlayerStore) RecordWin(name string) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	player := f.league.Find(name)
@@ -106,7 +108,7 @@ func (f *FileSystemPlayerStore) RecordWin(name string) {
 	if player != nil {
 		player.Wins++
 	} else {
-		f.league = append(f.league, Player{name, 1})
+		f.league = append(f.league, engine.Player{name, 1})
 	}
 
 	f.database.Encode(f.league)

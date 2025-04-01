@@ -4,22 +4,25 @@ import (
 	"log"
 	"net/http"
 
-	"game-server"
+	"github.com/oblassov/game-score-server/internal/engine"
+	"github.com/oblassov/game-score-server/internal/game/texasholdem"
+	"github.com/oblassov/game-score-server/internal/server"
+	"github.com/oblassov/game-score-server/internal/storage/filesystem"
 )
 
 const dbFileName = "./game.db.json"
 
 func main() {
 
-	store, close, err := poker.FileSystemPlayerStoreFromFile(dbFileName)
+	store, closeStore, err := filesystem.PlayerStoreFromFile(dbFileName)
 
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer close()
+	defer closeStore()
 
-	game := poker.NewTexasHoldem(store, poker.BlindAlerterFunc(poker.Alerter))
-	server, err := poker.NewPlayerServer(store, game)
+	game := texasholdem.NewTexasHoldem(store, engine.BlindAlerterFunc(engine.Alerter))
+	server, err := server.NewPlayerServer(store, game)
 
 	if err != nil {
 		log.Fatalf("problem creating player server %v", err)

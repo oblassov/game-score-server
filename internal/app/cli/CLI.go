@@ -1,4 +1,4 @@
-package poker
+package cli
 
 import (
 	"bufio"
@@ -7,6 +7,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/oblassov/game-score-server/internal/engine"
 )
 
 const PlayerPrompt = "Please enter the number of players: "
@@ -16,10 +18,10 @@ const BadWinnerInputErrMsg = "bad value received for winner, please try using '%
 type CLI struct {
 	in   *bufio.Scanner
 	out  io.Writer
-	game Game
+	game engine.Game
 }
 
-func NewCLI(in io.Reader, out io.Writer, game Game) *CLI {
+func NewCLI(in io.Reader, out io.Writer, game engine.Game) *CLI {
 	return &CLI{
 		in:   bufio.NewScanner(in),
 		out:  out,

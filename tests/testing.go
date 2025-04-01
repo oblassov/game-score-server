@@ -1,19 +1,51 @@
-package poker
+package tests
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/oblassov/game-score-server/internal/engine"
 )
+
+var (
+	DummyGame         = &GameSpy{}
+	DummyBlindAlerter = &SpyBlindAlerter{}
+	DummyPlayerStore  = &StubPlayerStore{}
+	DummyStdIn        = &bytes.Buffer{}
+	DummyStdOut       = &bytes.Buffer{}
+)
+
+func CreateTempFile(t testing.TB, initialData string) (tmpfile *os.File, removeFile func()) {
+	t.Helper()
+	tmpfile, err := os.CreateTemp("", "db")
+
+	if err != nil {
+		t.Fatalf("could not create temp file %v", err)
+	}
+
+	if _, err := tmpfile.WriteString(initialData); err != nil {
+		t.Errorf("coulnd't write string: %v", err)
+	}
+
+	removeFile = func() {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+	}
+
+	return tmpfile, removeFile
+}
 
 type StubPlayerStore struct {
 	Scores   map[string]int
 	WinCalls []string
-	League   League
+	League   engine.League
 }
 
 func (s *StubPlayerStore) GetPlayerScore(name string) int {
@@ -25,7 +57,7 @@ func (s *StubPlayerStore) RecordWin(name string) {
 	s.WinCalls = append(s.WinCalls, name)
 }
 
-func (s *StubPlayerStore) GetLeague() League {
+func (s *StubPlayerStore) GetLeague() engine.League {
 	return s.League
 }
 
@@ -88,7 +120,7 @@ func AssertNoError(t testing.TB, err error) {
 	}
 }
 
-func AssertLeague(t testing.TB, got, want League) {
+func AssertLeague(t testing.TB, got, want engine.League) {
 	t.Helper()
 
 	if !reflect.DeepEqual(got, want) {
@@ -127,7 +159,7 @@ func AssertResponseBody(t testing.TB, got, want string) {
 func AssertContentType(t testing.TB, response *httptest.ResponseRecorder, want string) {
 	t.Helper()
 
-	if response.Result().Header.Get("content-type") != want {
+	if response.Result().Header.Get("Content-Type") != want {
 		t.Errorf("response did not have content-type of 'application/json', got '%v'", response.Result().Header)
 	}
 
