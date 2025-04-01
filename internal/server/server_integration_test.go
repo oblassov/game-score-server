@@ -19,7 +19,7 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 	store, err := filesystem.NewPlayerStore(database)
 	tests.AssertNoError(t, err)
 
-	server, _ := server.NewPlayerServer(store, dummyGame)
+	server, _ := server.NewPlayerServer(store, tests.DummyGame)
 
 	player := "Pepper"
 
@@ -51,7 +51,7 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 
 		got := getLeagueFromResponse(t, response.Body)
 		want := []engine.Player{
-			{"Pepper", wantedCount},
+			{Name: "Pepper", Wins: wantedCount},
 		}
 
 		tests.AssertLeague(t, got, want)

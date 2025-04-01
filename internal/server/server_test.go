@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,14 +16,6 @@ import (
 	"github.com/oblassov/game-score-server/tests"
 )
 
-var (
-	dummyGame         = &tests.GameSpy{}
-	dummyBlindAlerter = &tests.SpyBlindAlerter{}
-	dummyPlayerStore  = &tests.StubPlayerStore{}
-	dummyStdIn        = &bytes.Buffer{}
-	dummyStdOut       = &bytes.Buffer{}
-)
-
 func TestGETPlayers(t *testing.T) {
 	store := tests.StubPlayerStore{
 		Scores: map[string]int{
@@ -33,7 +24,7 @@ func TestGETPlayers(t *testing.T) {
 		},
 	}
 
-	server := mustMakePlayerServer(t, &store, dummyGame)
+	server := mustMakePlayerServer(t, &store, tests.DummyGame)
 
 	t.Run("return 404 on missing players", func(t *testing.T) {
 		request := newGetScoreRequest("Apollo")
@@ -69,13 +60,13 @@ func TestLeague(t *testing.T) {
 
 	t.Run("it returns the league table as JSON", func(t *testing.T) {
 		wantedLeague := engine.League{
-			{"Cleo", 32},
-			{"Chris", 20},
-			{"Tiest", 14},
+			{Name: "Cleo", Wins: 32},
+			{Name: "Chris", Wins: 20},
+			{Name: "Tiest", Wins: 14},
 		}
 
 		store := tests.StubPlayerStore{League: wantedLeague}
-		server := mustMakePlayerServer(t, &store, dummyGame)
+		server := mustMakePlayerServer(t, &store, tests.DummyGame)
 
 		request := newLeagueRequest()
 		response := httptest.NewRecorder()
@@ -96,7 +87,7 @@ func TestStoreWins(t *testing.T) {
 		Scores: map[string]int{},
 	}
 
-	server := mustMakePlayerServer(t, &store, dummyGame)
+	server := mustMakePlayerServer(t, &store, tests.DummyGame)
 
 	t.Run("it returns accepted on POST", func(t *testing.T) {
 		player := "Pepper"
@@ -130,7 +121,7 @@ func TestGame(t *testing.T) {
 		winner := "Ruth"
 
 		game := &tests.GameSpy{BlindAlert: []byte(wantedBlindAlert)}
-		server := httptest.NewServer(mustMakePlayerServer(t, dummyPlayerStore, game))
+		server := httptest.NewServer(mustMakePlayerServer(t, tests.DummyPlayerStore, game))
 		defer server.Close()
 
 		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"

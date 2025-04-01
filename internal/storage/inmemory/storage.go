@@ -27,7 +27,7 @@ func (i *PlayerStore) GetLeague() engine.League {
 	var league []engine.Player
 
 	for name, wins := range i.store {
-		league = append(league, engine.Player{name, wins})
+		league = append(league, engine.Player{Name: name, Wins: wins})
 	}
 
 	return league

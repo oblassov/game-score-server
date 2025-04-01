@@ -108,7 +108,7 @@ func (f *PlayerStore) RecordWin(name string) {
 	if player != nil {
 		player.Wins++
 	} else {
-		f.league = append(f.league, engine.Player{name, 1})
+		f.league = append(f.league, engine.Player{Name: name, Wins: 1})
 	}
 
 	f.database.Encode(f.league)
