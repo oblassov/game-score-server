@@ -2,7 +2,7 @@ package poker_test
 
 import (
 	"bytes"
-	poker "game-server/v2"
+	"game-server"
 	"io"
 	"strings"
 	"testing"

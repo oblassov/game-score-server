@@ -3,7 +3,7 @@ package poker_test
 import (
 	"encoding/json"
 	"fmt"
-	poker "game-server/v2"
+	"game-server"
 	"io"
 	"net/http"
 	"net/http/httptest"

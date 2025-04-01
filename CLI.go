@@ -10,8 +10,8 @@ import (
 )
 
 const PlayerPrompt = "Please enter the number of players: "
-const BadPlayerInputErrMsg = "Bad value received for number of players, please try again with a number"
-const BadWinnerInputErrMsg = "Bad value received for winner, please try using '%NAME% wins'"
+const BadPlayerInputErrMsg = "bad value received for number of players, please try again with a number"
+const BadWinnerInputErrMsg = "bad value received for winner, please try using '%NAME% wins'"
 
 type CLI struct {
 	in   *bufio.Scanner

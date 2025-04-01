@@ -3,6 +3,7 @@ package poker
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -24,8 +25,8 @@ func (s *StubPlayerStore) RecordWin(name string) {
 	s.WinCalls = append(s.WinCalls, name)
 }
 
-func (p *StubPlayerStore) GetLeague() League {
-	return p.League
+func (s *StubPlayerStore) GetLeague() League {
+	return s.League
 }
 
 type ScheduledAlert struct {
@@ -41,7 +42,7 @@ type SpyBlindAlerter struct {
 	Alerts []ScheduledAlert
 }
 
-func (s *SpyBlindAlerter) ScheduleAlertAt(at time.Duration, amount int, to io.Writer) {
+func (s *SpyBlindAlerter) ScheduleAlertAt(at time.Duration, amount int, _ io.Writer) {
 	s.Alerts = append(s.Alerts, ScheduledAlert{at, amount})
 }
 
@@ -57,7 +58,9 @@ type GameSpy struct {
 func (g *GameSpy) Start(numberOfPlayers int, out io.Writer) {
 	g.StartCalled = true
 	g.StartedWith = numberOfPlayers
-	out.Write(g.BlindAlert)
+	if _, err := out.Write(g.BlindAlert); err != nil {
+		log.Println("couldn't write an alert: ", err)
+	}
 }
 
 func (g *GameSpy) Finish(winner string) {

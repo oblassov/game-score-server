@@ -24,7 +24,7 @@ func (p *TexasHoldem) Start(numberOfPlayers int, alertsDestination io.Writer) {
 
 	for _, blind := range blinds {
 		p.alerter.ScheduleAlertAt(blindTime, blind, alertsDestination)
-		blindTime = blindTime + blindIncrement
+		blindTime += blindIncrement
 	}
 }
 

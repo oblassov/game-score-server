@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"game-server/v2"
+	"game-server"
 )
 
 const dbFileName = "./game.db.json"

@@ -1,7 +1,7 @@
 package poker_test
 
 import (
-	poker "game-server/v2"
+	"game-server"
 	"net/http"
 	"net/http/httptest"
 	"sync"

@@ -2,7 +2,7 @@ package poker_test
 
 import (
 	"fmt"
-	poker "game-server/v2"
+	"game-server"
 	"io"
 	"testing"
 	"time"
