@@ -22,8 +22,8 @@ func (s *StubPlayerStore) RecordWin(name string) {
 	s.winCalls = append(s.winCalls, name)
 }
 
-func (p *StubPlayerStore) GetLeague() League {
-	return p.league
+func (s *StubPlayerStore) GetLeague() League {
+	return s.league
 }
 
 type SpyBlindAlerter struct {

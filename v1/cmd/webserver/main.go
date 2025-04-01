@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"game-server/v1"
+	poker "game-server/v1"
 )
 
 const dbFileName = "./game.db.json"

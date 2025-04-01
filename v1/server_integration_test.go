@@ -22,7 +22,7 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(wantedCount)
 
-	for i := 0; i < wantedCount; i++ {
+	for range wantedCount {
 		go func() {
 			defer wg.Done()
 			server.ServeHTTP(httptest.NewRecorder(), newPostWinRequest(player))
