@@ -34,7 +34,6 @@ func NewPlayerServer(store engine.PlayerStore, game engine.Game) (*PlayerServer,
 	p := new(PlayerServer)
 
 	tmpl, err := template.New("game.html").Parse(gameHTML)
-
 	if err != nil {
 		return nil, fmt.Errorf("problem loading template %s", err.Error())
 	}
@@ -57,10 +56,15 @@ func NewPlayerServer(store engine.PlayerStore, game engine.Game) (*PlayerServer,
 }
 
 func (p *PlayerServer) pageHandler(w http.ResponseWriter, _ *http.Request) {
-	fmt.Fprintln(w, "Hello, run cli tool to record score!")
-	fmt.Fprintln(w, "/players/$playername to check a player")
-	fmt.Fprintln(w, "/league to check the league")
-	fmt.Fprint(w, "/game to check the game")
+	if _, err := fmt.Fprint(
+		w,
+		"Hello, run cli tool to record score!\n",
+		"/players/$playername to check a player\n",
+		"/league to check the league\n",
+		"/game to check the game\n",
+	); err != nil {
+		log.Println("couldn't print the greeting: ", err)
+	}
 }
 
 func (p *PlayerServer) leagueHandler(w http.ResponseWriter, _ *http.Request) {
@@ -110,7 +114,9 @@ func (p *PlayerServer) showScore(w http.ResponseWriter, player string) {
 		w.WriteHeader(http.StatusNotFound)
 	}
 
-	fmt.Fprint(w, score)
+	if _, err := fmt.Fprint(w, score); err != nil {
+		log.Println("couldn't print the score: ", err)
+	}
 }
 
 func (p *PlayerServer) processWin(w http.ResponseWriter, player string) {

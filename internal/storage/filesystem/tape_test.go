@@ -12,9 +12,13 @@ func TestTape_Write(t *testing.T) {
 	defer clean()
 
 	tape := &tape{file: file}
-	tape.Write([]byte("abc"))
+	if _, err := tape.Write([]byte("abc")); err != nil {
+		t.Errorf("couldn't write: %v", err)
+	}
 
-	file.Seek(0, io.SeekStart)
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		t.Errorf("couldn't set an offset in a file: %v", err)
+	}
 	newFileContents, _ := io.ReadAll(file)
 
 	got := string(newFileContents)

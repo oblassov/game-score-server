@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 
@@ -30,11 +31,14 @@ func NewCLI(in io.Reader, out io.Writer, game engine.Game) *CLI {
 }
 
 func (cli *CLI) PlayPoker() {
-	fmt.Fprint(cli.out, PlayerPrompt)
+	if _, err := fmt.Fprint(cli.out, PlayerPrompt); err != nil {
+		log.Println("couldn't print the player number prompt: ", err)
+	}
 	numberOfPlayers, err := strconv.Atoi(cli.readLine())
-
 	if err != nil {
-		fmt.Fprint(cli.out, BadPlayerInputErrMsg)
+		if _, err = fmt.Fprint(cli.out, BadPlayerInputErrMsg); err != nil {
+			log.Println("couldn't print the bad number of players prompt: ", err)
+		}
 		return
 	}
 
@@ -44,7 +48,9 @@ func (cli *CLI) PlayPoker() {
 	winner, err := extractWinner(winnerInput)
 
 	if err != nil {
-		fmt.Fprint(cli.out, BadWinnerInputErrMsg)
+		if _, err := fmt.Fprint(cli.out, BadWinnerInputErrMsg); err != nil {
+			log.Println("couldn't print the bad winner prompt: ", err)
+		}
 		return
 	}
 

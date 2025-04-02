@@ -21,17 +21,17 @@ type PlayerStore struct {
 func PlayerStoreFromFile(path string) (*PlayerStore, func(), error) {
 
 	db, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666)
-
 	if err != nil {
 		log.Fatalf("problem opening %s %v", path, err)
 	}
 
 	closeFunc := func() {
-		db.Close()
+		if err = db.Close(); err != nil {
+			log.Printf("couldn't close the %s: %v", path, err)
+		}
 	}
 
 	store, err := NewPlayerStore(db)
-
 	if err != nil {
 		log.Fatalf("problem creating file system store, %v", err)
 	}
@@ -61,21 +61,25 @@ func NewPlayerStore(file *os.File) (*PlayerStore, error) {
 }
 
 func initializePlayerDBFile(file *os.File) error {
-	file.Seek(0, io.SeekStart)
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("couldn't set an offset in a file: %w", err)
+	}
 
 	info, err := file.Stat()
-
 	if err != nil {
-		return fmt.Errorf("problem getting file info from file %s, %v", file.Name(), err)
+		return fmt.Errorf("problem getting file info from file %s, %w", file.Name(), err)
 	}
 
 	if info.Size() == 0 {
-		file.Write([]byte("[]"))
-		file.Seek(0, io.SeekStart)
+		if _, err := file.WriteString("[]"); err != nil {
+			return fmt.Errorf("couldn't write string: %w", err)
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("couldn't set an offset in a file when size is 0: %w", err)
+		}
 	}
 
 	return nil
-
 }
 
 func (f *PlayerStore) GetLeague() engine.League {
@@ -111,5 +115,7 @@ func (f *PlayerStore) RecordWin(name string) {
 		f.league = append(f.league, engine.Player{Name: name, Wins: 1})
 	}
 
-	f.database.Encode(f.league)
+	if err := f.database.Encode(f.league); err != nil {
+		log.Printf("couldn't encode the db: %v", err)
+	}
 }

@@ -24,8 +24,8 @@ var (
 
 func CreateTempFile(t testing.TB, initialData string) (tmpfile *os.File, removeFile func()) {
 	t.Helper()
-	tmpfile, err := os.CreateTemp("", "db")
 
+	tmpfile, err := os.CreateTemp("", "db")
 	if err != nil {
 		t.Fatalf("could not create temp file %v", err)
 	}
@@ -35,8 +35,13 @@ func CreateTempFile(t testing.TB, initialData string) (tmpfile *os.File, removeF
 	}
 
 	removeFile = func() {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
+		if err := tmpfile.Close(); err != nil {
+			t.Errorf("couldn't close the file %s: %v", tmpfile.Name(), err)
+		}
+
+		if err := os.Remove(tmpfile.Name()); err != nil {
+			t.Errorf("couldn't remove the file %s: %v", tmpfile.Name(), err)
+		}
 	}
 
 	return tmpfile, removeFile

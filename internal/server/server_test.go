@@ -126,7 +126,13 @@ func TestGame(t *testing.T) {
 
 		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
 		ws := mustDialWS(t, wsURL)
-		defer ws.Close()
+		closeWrapper := func() {
+			if err := ws.Close(); err != nil {
+				t.Errorf("couldn't close the websocket: %v", err)
+			}
+		}
+
+		defer closeWrapper()
 
 		writeMessage(t, ws, "3")
 		writeMessage(t, ws, winner)

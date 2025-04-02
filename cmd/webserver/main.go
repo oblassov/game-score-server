@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/oblassov/game-score-server/internal/engine"
 	"github.com/oblassov/game-score-server/internal/game/texasholdem"
@@ -13,22 +14,31 @@ import (
 const dbFileName = "./game.db.json"
 
 func main() {
-
 	store, closeStore, err := filesystem.PlayerStoreFromFile(dbFileName)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer closeStore()
 
 	game := texasholdem.NewTexasHoldem(store, engine.BlindAlerterFunc(engine.Alerter))
-	server, err := server.NewPlayerServer(store, game)
+	playerServer, err := server.NewPlayerServer(store, game)
 
 	if err != nil {
-		log.Fatalf("problem creating player server %v", err)
+		log.Printf("problem creating player server %v", err)
+		return
 	}
 
-	if err := http.ListenAndServe(":5000", server); err != nil {
-		log.Fatalf("could not listen on port 5000 %v", err)
+	server := &http.Server{
+		Addr:         "5000",
+		Handler:      playerServer.Handler,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+		IdleTimeout:  5 * time.Second,
+	}
+
+	log.Println("Starting a server on localhost:5000")
+	if err := server.ListenAndServe(); err != nil {
+		log.Printf("could not listen on port 5000 %v", err)
+		return
 	}
 }
