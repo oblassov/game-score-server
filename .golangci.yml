@@ -1,0 +1,290 @@
+#======================================================================#
+# Strict but pragmatic Go code quality configuration (v2 format)
+# Enforces security, performance, and style best practices while avoiding extreme strictness
+#======================================================================#
+version: "2"
+
+run:
+  concurrency: 6                  # Optimize for modern multi-core systems
+  go: ""                          # Auto-detect Go version from go.mod
+  relative-path-mode: gomod       # Paths relative to go.mod location
+  build-tags:
+    - mytag                       # Custom build tags for conditional compilation
+  modules-download-mode: readonly # Prevent accidental go.mod modifications
+  tests: false                    # Exclude test files from lint analysis
+
+output:
+  path-prefix: ""                 # No path transformation needed
+  print-linter-name: true         # Must have. Easier to understand the output.
+  sort-results: true              # Slightly easier to follow the results + getting deterministic output.
+
+linters:
+  default: none
+  enable:
+    #----------------------#
+    # Core Reliability & Correctness
+    #----------------------#
+    - errcheck                 # Ensure errors are properly checked/handled
+    - govet                    # Official Go analyzer suite (vet)
+    - staticcheck              # Advanced static analysis checks
+    - unused                   # Detect unused code (dead code elimination)
+    - ineffassign              # Find ineffective assignments
+    - bodyclose                # Ensure HTTP response bodies are closed
+    - sqlclosecheck            # Verify database resources are closed
+    - noctx                    # Require context.Context in HTTP requests
+
+    #----------------------#
+    # Security & Data Integrity
+    #----------------------#
+    - gosec                    # Security vulnerability scanner
+    - bidichk                  # Detect dangerous Unicode bidirectional chars
+    - protogetter              # Enforce proper protocol buffer field access
+
+    #----------------------#
+    # Modern Go Practices
+    #----------------------#
+    - copyloopvar              # Catch Go 1.22+ loop variable capture issues
+    - sloglint                 # Enforce structured logging (log/slog) conventions
+    - usestdlibvars            # Prefer standard library constants/variables
+    - exptostd                 # Flag outdated golang.org/x/exp package usage
+
+    #----------------------#
+    # Code Quality & Maintainability
+    #----------------------#
+    - revive                   # Modern, configurable linter (golint replacement)
+    - gocritic                 # Sophisticated code quality analyzer
+    - testifylint              # Improve testify testing framework usage
+    - perfsprint               # Optimize fmt.Sprintf usage
+    - unconvert                # Remove unnecessary type conversions
+    - wastedassign             # Find wasted assignments
+
+    #----------------------#
+    # API & Interface Design
+    #----------------------#
+    - errname                  # Enforce error naming conventions
+    - iface                    # Prevent interface pollution
+    - predeclared              # Avoid shadowing predeclared identifiers
+
+    #----------------------#
+    # Testing & Examples
+    #----------------------#
+    - testableexamples         # Validate example code quality
+    - tparallel                # Enforce parallel test correctness
+
+    #----------------------#
+    # Formatting & Style
+    #----------------------#
+    - asciicheck               # Enforce ASCII-only identifiers
+    - tagliatelle              # Validate struct tag naming conventions
+    - canonicalheader          # Ensure canonical HTTP header names
+
+    #----------------------#
+    # Specialized Checks
+    #----------------------#
+    - durationcheck            # Validate time.Duration usage
+    - nilerr                   # Detect nil error returns after checks
+    - nilnil                   # Prevent returning (nil, nil) errors
+    - promlinter               # Validate Prometheus metric naming
+    - spancheck                # Verify OpenTelemetry span handling
+
+    #----------------------#
+    # Configuration & Modules
+    #----------------------#
+    - gomoddirectives          # Validate go.mod directives
+    - reassign                 # Detect package variable reassignments
+
+    #======================================================================#
+    # Commented-Out Linters (Enable as needed)
+    #======================================================================#
+    # - cyclop                 # Measure function cyclomatic complexity
+    # - decorder               # Check declaration order/count
+    # - depguard               # Advanced import control (replaces gomodguard)
+    # - dogsled                # Flag excessive blank identifiers (x, _, _, _ := ...)
+    # - dupl                   # Detect code duplication
+    # - err113                 # Strict error handling rules
+    # - exhaustruct            # Ensure struct field initialization
+    # - forbidigo              # Ban specific identifiers
+    # - funlen                 # Limit function length (configure in settings)
+    # - ginkgolinter           # Ginkgo testing framework best practices
+    # - godot                  # Require trailing periods in comments
+    # - gochecknoglobals       # Prevent global variables
+    # - gochecknoinits         # Prevent init functions
+    # - grouper                # Analyze expression grouping
+    # - importas               # Enforce consistent import aliases
+    # - ireturn                # Validate interface return types
+    # - loggercheck            # Verify logging key/value pairs
+    # - makezero               # Check slice initialization length
+    # - nestif                 # Limit nested if statements
+    # - nlreturn               # Require newline before return
+    # - paralleltest           # Enforce t.Parallel() usage
+    # - prealloc               # Detect slice preallocation opportunities
+    # - tagalign               # Align struct tags vertically
+    # - testpackage            # Enforce _test package separation
+    # - thelper                # Validate test helper functions
+    # - wsl                    # Control whitespace formatting
+
+  settings:
+    depguard:
+      rules:
+        deprecated:            # Block obsolete or problematic dependencies
+          files:
+            - $all
+          deny:
+            - pkg: github.com/golang/protobuf  # Legacy protobuf package
+              desc: Migrate to google.golang.org/protobuf
+            - pkg: github.com/satori/go.uuid   # Unmaintained UUID library
+              desc: Use maintained github.com/google/uuid
+            - pkg: github.com/gofrs/uuid$      # Legacy module version
+              desc: Requires v5+ for proper module support
+
+        non-main files:            # Enforce modern logging in non-main packages
+          files:
+            - '!**/main.go'
+          deny:
+            - pkg: log$            # Discourage standard log package
+              desc: Use log/slog for structured logging
+
+        non-test files:            # Modern random number generation
+          files:
+            - '!$test'
+          deny:
+            - pkg: math/rand$      # Legacy math/rand package
+              desc: Prefer math/rand/v2 for improved algorithms
+
+    errcheck:                      # Comprehensive error checking
+      check-type-assertions: true  # Verify type assertion errors
+      check-blank: true            # Check for blank identifier error ignores
+      exclude-functions:           # Allowlist for known safe patterns
+        - io/ioutil.ReadFile       # Legacy function still in transition
+        - io.Copy(*bytes.Buffer)   # Buffer copies don't require error check
+        - io.Copy(os.Stdout)       # Stdout writes rarely need error handling
+
+    funlen:                        # Function size limits
+      lines: 100                   # Max 100 lines per function
+      statements: 50               # Max 50 statements per function
+      ignore-comments: true        # Exclude comment lines from count
+
+    gocognit:                      # Cognitive complexity analysis
+      min-complexity: 20           # Report functions with complexity >=20
+
+    gochecksumtype:                # Exhaustive type checking
+      default-signifies-exhaustive: false  # Default case doesn't skip checks
+
+    gocritic:                      # Advanced code quality rules
+      disabled-checks:
+        - hugeParam                # Allow large parameter passing for API stability
+        - rangeExprCopy            # Permit range expression copies in performance-non-critical code
+        - rangeValCopy             # Allow value copying in loops when needed
+      enabled-tags:                # Enabled check categories
+        - diagnostic               # Fundamental correctness issues
+        - experimental             # New/evolving checks
+        - opinionated              # Style preferences
+        - performance              # Performance optimization hints
+        - style                    # Code consistency
+      settings:
+        captLocal:                 # Local variable naming
+          paramsOnly: false        # Check all local variables, not just params
+        underef:                   # Dereference checking
+          skipRecvDeref: false     # Check all receiver dereferences
+
+    govet:                         # Official Go analyzer suite
+      enable-all: true             # Enable all available vet checks
+      disable:
+        - fieldalignment           # Disable struct field reordering suggestions
+      settings:
+        shadow:                    # Variable shadowing detection
+          strict: false            # Allow some shadowing for readability
+
+    inamedparam:                   # Interface parameter naming
+      skip-single-param: true      # Allow unnamed single parameters in interfaces
+
+    mnd:                           # Magic number detection
+      ignored-functions:           # Common functions with numeric params
+        - args.Error               # CLI argument errors
+        - flag.*                   # Flag parsing functions
+        - os.*                     # File mode operations
+        - prometheus.*Buckets      # Metric bucket definitions
+
+    nakedret:                      # Naked return style
+      max-func-lines: 1            # Only allow naked returns in single-line funcs
+
+    nolintlint:                    # Nolint directive validation
+      require-explanation: true    # Need justification for suppressions
+      require-specific: true       # Must specify suppressed linter
+      allow-no-explanation:        # Exceptions for self-explanatory suppressions
+        - funlen                   # Length-based exemptions
+        - gocognit                 # Complexity exemptions
+        - lll                      # Line length exemptions
+
+    perfsprint:                    # Performance-sensitive formatting
+      strconcat: false             # Don't enforce string concat over Sprintf
+
+    reassign:                      # Variable reassignment checks
+      patterns:
+        - .*                       # Check all global variables
+
+    rowserrcheck:                  # SQL error handling
+      packages:                    # Extended database drivers
+        - github.com/jmoiron/sqlx  # Popular SQL extension package
+
+    sloglint:                      # Structured logging rules
+      no-global: all               # Ban global slog.Logger instances
+      context: scope               # Require context in current function scope
+
+    tagliatelle:                   # Struct tag style enforcement
+      case:
+        rules:
+          json: snake              # JSON: snake_case for API compatibility
+          yaml: snake              # YAML: snake_case for consistency
+          xml: camel               # XML: camelCase for spec compliance
+          bson: camel              # BSON: camelCase for MongoDB conventions
+          avro: snake              # Avro: snake_case for schema alignment
+          mapstructure: kebab      # Viper: kebab-case for config parsing
+
+    usetesting:                    # Testing best practices
+      os-temp-dir: true            # Enforce os.TempDir() in test cleanup
+
+  exclusions:                      # Noise reduction rules (TOP-LEVEL KEY)
+    generated: lax                 # Relax checks for generated code
+    presets:                       # Disabled opinionated rule groups
+      - comments                   # Comment style rules
+      - common-false-positives     # Overly broad checks
+      - legacy                     # Deprecated practices
+      - std-error-handling         # Go 1.x error conventions
+    rules:
+      - linters:
+          - godot                  # Comment punctuation in special cases
+        source: (noinspection|TODO)
+      - linters:
+          - gocritic               # IDE suppression directives
+        source: //noinspection
+      - linters:                   # Test-specific exemptions
+          - bodyclose              # Test HTTP clients
+          - dupl                   # Test duplication
+          - errcheck               # Test error handling
+          - funlen                 # Test setup functions
+          - goconst                # Test values
+          - gosec                  # Test security checks
+          - noctx                  # Test HTTP contexts
+          - wrapcheck              # Test error wrapping
+        path: (.+)_test\.go        # Apply to all test files
+    paths:                         # Third-party code exemptions
+      - third_party$               # Vendor code
+      - builtin$                   # Core package overrides
+      - examples$                  # Example code
+
+issues:                            # Reporting configuration
+  max-issues-per-linter: 0         # Show all issues without throttling
+  max-same-issues: 1               # Report duplicate findings
+  fix: false                       # Require manual code changes
+  uniq-by-line: false              # Report all instances of issues
+
+formatters:                        # Output formatting
+  enable:
+    - goimports                    # Standard import organization
+  exclusions:
+    generated: lax
+    paths:                         # Third-party code exemptions
+      - third_party$               # Vendor code
+      - builtin$                   # Core package overrides
+      - examples$                  # Example code

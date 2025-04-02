@@ -131,7 +131,6 @@ func TestGame(t *testing.T) {
 				t.Errorf("couldn't close the websocket: %v", err)
 			}
 		}
-
 		defer closeWrapper()
 
 		writeMessage(t, ws, "3")
