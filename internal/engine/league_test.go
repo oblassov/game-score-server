@@ -50,12 +50,49 @@ func TestNewLeague(t *testing.T) {
 		}
 	})
 
-	t.Run("empty input returns an error", func(t *testing.T) {
-		_, err := engine.NewLeague(strings.NewReader(``))
-		if err == nil {
-			t.Fatal("expected an error, got nil")
+	for name, input := range map[string]string{
+		"empty input":           ``,
+		"newline only":          "\n",
+		"spaces only":           "  ",
+		"mixed whitespace only": " \t\r\n ",
+	} {
+		t.Run(name+" gives an empty league", func(t *testing.T) {
+			got, err := engine.NewLeague(strings.NewReader(input))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("got %v, want an empty league", got)
+			}
+		})
+	}
+
+	t.Run("trailing whitespace after valid JSON is fine", func(t *testing.T) {
+		got, err := engine.NewLeague(strings.NewReader("[{\"Name\":\"Chris\",\"Wins\":1}]\n \n"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := engine.League{{Name: "Chris", Wins: 1}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
 		}
 	})
+
+	for name, input := range map[string]string{
+		"garbage":      `[] x`,
+		"second value": `[{"Name":"Chris","Wins":1}][{"Name":"Cleo","Wins":2}]`,
+		"second array": "[]\n[]",
+	} {
+		t.Run("trailing data ("+name+") returns an error", func(t *testing.T) {
+			got, err := engine.NewLeague(strings.NewReader(input))
+			if err == nil {
+				t.Fatalf("expected an error, got league %v", got)
+			}
+			if !strings.Contains(err.Error(), "problem parsing a league") {
+				t.Errorf("error %q lacks the context prefix", err)
+			}
+		})
+	}
 }
 
 func TestLeagueFind(t *testing.T) {

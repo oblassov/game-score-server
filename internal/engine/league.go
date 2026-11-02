@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -26,11 +27,25 @@ func (l League) Find(name string) *Player {
 
 func NewLeague(reader io.Reader) (League, error) {
 	var league League
-	err := json.NewDecoder(reader).Decode(&league)
+	dec := json.NewDecoder(reader)
 
+	err := dec.Decode(&league)
+	if errors.Is(err, io.EOF) {
+		// Empty or whitespace-only input is an empty league.
+		return league, nil
+	}
 	if err != nil {
-		err = fmt.Errorf("problem parsing a league: %w", err)
+		return league, fmt.Errorf("problem parsing a league: %w", err)
 	}
 
-	return league, err
+	// Anything but whitespace after the first value is an error.
+	_, err = dec.Token()
+	if errors.Is(err, io.EOF) {
+		return league, nil
+	}
+	if err == nil {
+		err = errors.New("unexpected data after top-level value")
+	}
+
+	return league, fmt.Errorf("problem parsing a league: %w", err)
 }

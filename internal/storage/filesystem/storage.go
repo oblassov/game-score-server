@@ -78,7 +78,26 @@ func initializePlayerDBFile(file *os.File) error {
 		return fmt.Errorf("problem getting file info from file %s, %w", file.Name(), err)
 	}
 
-	if info.Size() == 0 {
+	blank := info.Size() == 0
+	if !blank {
+		data, readErr := io.ReadAll(file)
+		if readErr != nil {
+			return fmt.Errorf("couldn't read file %s: %w", file.Name(), readErr)
+		}
+
+		blank = len(bytes.TrimSpace(data)) == 0
+		if blank {
+			if err := file.Truncate(0); err != nil {
+				return fmt.Errorf("couldn't truncate blank file %s: %w", file.Name(), err)
+			}
+		}
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("couldn't set an offset in a file: %w", err)
+	}
+
+	if blank {
 		if _, err := file.WriteString("[]"); err != nil {
 			return fmt.Errorf("couldn't write string: %w", err)
 		}
@@ -153,6 +172,13 @@ func (f *PlayerStore) readLeague() (engine.League, error) {
 	data, err := os.ReadFile(f.path)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read %s: %w", f.path, err)
+	}
+
+	// NewPlayerStore seeds a blank file with an empty league, so a blank file
+	// here means it was emptied after that (e.g. mid-rewrite by another
+	// process); refuse to overwrite it.
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, fmt.Errorf("couldn't load league from %s: file is empty", f.path)
 	}
 
 	league, err := engine.NewLeague(bytes.NewReader(data))

@@ -94,6 +94,28 @@ func TestFileSystemStore(t *testing.T) {
 		tests.AssertNoError(t, err)
 	})
 
+	t.Run("works with a whitespace-only file", func(t *testing.T) {
+		database, cleanDatabase := tests.CreateTempFile(t, "\n")
+		defer cleanDatabase()
+
+		store, err := NewPlayerStore(database)
+
+		tests.AssertNoError(t, err)
+		store.RecordWin("Pepper")
+		tests.AssertScoreEquals(t, store.GetPlayerScore("Pepper"), 1)
+	})
+
+	t.Run("fails on trailing data instead of dropping it later", func(t *testing.T) {
+		database, cleanDatabase := tests.CreateTempFile(t, `[{"Name":"Cleo","Wins":10}] junk`)
+		defer cleanDatabase()
+
+		_, err := NewPlayerStore(database)
+
+		if err == nil {
+			t.Fatal("expected an error for trailing data, got nil")
+		}
+	})
+
 	t.Run("league sorted", func(t *testing.T) {
 		database, cleanDatabase := tests.CreateTempFile(t, `[
 			{"Name": "Cleo", "Wins": 10},
