@@ -22,21 +22,22 @@ func PlayerStoreFromFile(path string) (*PlayerStore, func(), error) {
 
 	db, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666)
 	if err != nil {
-		log.Fatalf("problem opening %s %v", path, err)
+		return nil, nil, fmt.Errorf("problem opening %s: %w", path, err)
 	}
 
 	closeFunc := func() {
-		if err = db.Close(); err != nil {
-			log.Printf("couldn't close the %s: %v", path, err)
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("couldn't close the %s: %v", path, closeErr)
 		}
 	}
 
 	store, err := NewPlayerStore(db)
 	if err != nil {
-		log.Fatalf("problem creating file system store, %v", err)
+		closeFunc()
+		return nil, nil, fmt.Errorf("problem creating file system store: %w", err)
 	}
 
-	return store, closeFunc, err
+	return store, closeFunc, nil
 }
 
 func NewPlayerStore(file *os.File) (*PlayerStore, error) {

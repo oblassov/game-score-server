@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -26,4 +27,15 @@ func TestGetLeagueConcurrentReads(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// Currently exits the test binary via log.Fatalf instead of returning an error.
+func TestPlayerStoreFromFileReturnsErrorOnBadPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-dir", "db.json")
+
+	_, closeFunc, err := PlayerStoreFromFile(path)
+	if err == nil {
+		closeFunc()
+		t.Fatal("expected an error for an unopenable path, got nil")
+	}
 }
