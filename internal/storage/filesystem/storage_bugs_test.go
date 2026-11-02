@@ -93,7 +93,12 @@ func TestRecordWinRollsBackWhenWriteFails(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			database, err := os.CreateTemp(t.TempDir(), "db")
+			if os.Geteuid() == 0 {
+				t.Skip("read-only directories do not stop root")
+			}
+
+			dir := t.TempDir()
+			database, err := os.CreateTemp(dir, "db")
 			if err != nil {
 				t.Fatalf("could not create temp file: %v", err)
 			}
@@ -106,9 +111,11 @@ func TestRecordWinRollsBackWhenWriteFails(t *testing.T) {
 			store, err := NewPlayerStore(database)
 			tests.AssertNoError(t, err)
 
-			if err = database.Close(); err != nil {
-				t.Fatalf("could not close file: %v", err)
+			// The atomic write needs to create a temp file next to the db.
+			if err = os.Chmod(dir, 0o500); err != nil {
+				t.Fatalf("could not make dir read-only: %v", err)
 			}
+			defer func() { _ = os.Chmod(dir, 0o700) }()
 
 			store.RecordWin(tc.player)
 
