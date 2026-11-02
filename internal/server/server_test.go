@@ -397,6 +397,34 @@ func TestWebSocketRejectsInvalidPlayerCount(t *testing.T) {
 	}
 }
 
+type finishSignalGame struct {
+	finished chan string
+}
+
+func (g *finishSignalGame) Start(_ int, _ io.Writer) {}
+
+func (g *finishSignalGame) Finish(winner string) { g.finished <- winner }
+
+func TestWebSocketClientDisconnectBeforeWinnerDoesNotFinishGame(t *testing.T) {
+	game := &finishSignalGame{finished: make(chan string, 1)}
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+
+	writeMessage(t, ws, "3")
+
+	if err := ws.Close(); err != nil {
+		t.Fatalf("could not close the client websocket: %v", err)
+	}
+
+	select {
+	case winner := <-game.finished:
+		t.Errorf("Finish was called with %q after the client disconnected without naming a winner", winner)
+	case <-time.After(500 * time.Millisecond):
+	}
+}
+
 func assertServerClosesWS(t *testing.T, ws *websocket.Conn) {
 	t.Helper()
 

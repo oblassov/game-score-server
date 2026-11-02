@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -26,14 +27,13 @@ func newPlayerServerWS(w http.ResponseWriter, r *http.Request) *playerServerWS {
 	return &playerServerWS{Conn: conn}
 }
 
-func (w *playerServerWS) WaitForMsg() string {
+func (w *playerServerWS) WaitForMsg() (string, error) {
 	_, msg, err := w.ReadMessage()
-
 	if err != nil {
-		log.Printf("error handling websocket %v\n", err)
+		return "", fmt.Errorf("reading websocket message: %w", err)
 	}
 
-	return string(msg)
+	return string(msg), nil
 }
 
 // Close marks the wrapper as closed and closes the underlying connection.

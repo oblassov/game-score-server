@@ -108,7 +108,12 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	numberOfPlayersMsg := ws.WaitForMsg()
+	numberOfPlayersMsg, err := ws.WaitForMsg()
+	if err != nil {
+		log.Println("couldn't read the numberOfPlayers: ", err)
+		return
+	}
+
 	numberOfPlayers, err := strconv.Atoi(numberOfPlayersMsg)
 	if err != nil {
 		log.Println("couldn't convert the numberOfPlayers: ", err)
@@ -122,7 +127,12 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 
 	p.game.Start(numberOfPlayers, ws)
 
-	winner := ws.WaitForMsg()
+	winner, err := ws.WaitForMsg()
+	if err != nil {
+		log.Println("couldn't read the winner: ", err)
+		return
+	}
+
 	p.game.Finish(winner)
 }
 
