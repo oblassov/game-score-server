@@ -656,6 +656,128 @@ func TestWebSocketTrimsWinnerName(t *testing.T) {
 	}
 }
 
+func TestWebSocketClosesIdleClient(t *testing.T) {
+	cases := map[string]func(t *testing.T, ws *websocket.Conn){
+		"never sends the player count": func(*testing.T, *websocket.Conn) {},
+		"never names a winner": func(t *testing.T, ws *websocket.Conn) {
+			t.Helper()
+
+			writeMessage(t, ws, "3")
+		},
+	}
+
+	for name, act := range cases {
+		t.Run(name, func(t *testing.T) {
+			restore := server.SetWSReadLimitsForTest(100*time.Millisecond, 100*time.Millisecond, 1024)
+			defer restore()
+
+			game := &stopSignalGame{stopped: make(chan struct{})}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			act(t, ws)
+
+			assertServerClosesWS(t, ws)
+		})
+	}
+}
+
+func TestWebSocketWinnerWaitOutlastsSetupTimeout(t *testing.T) {
+	restore := server.SetWSReadLimitsForTest(50*time.Millisecond, 5*time.Second, 1024)
+	defer restore()
+
+	game := &finishSignalGame{finished: make(chan string, 1)}
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+	defer func() { _ = ws.Close() }()
+
+	writeMessage(t, ws, "3")
+	time.Sleep(300 * time.Millisecond)
+	writeMessage(t, ws, "Ruth")
+
+	select {
+	case winner := <-game.finished:
+		if winner != "Ruth" {
+			t.Errorf("Finish was called with %q, want %q", winner, "Ruth")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a slow game was cut off by the setup read timeout")
+	}
+}
+
+func TestWebSocketRejectsOversizedMessage(t *testing.T) {
+	oversized := strings.Repeat("a", 64*1024)
+
+	cases := map[string]func(t *testing.T, ws *websocket.Conn){
+		"as the player count": func(t *testing.T, ws *websocket.Conn) {
+			t.Helper()
+
+			writeMessage(t, ws, oversized)
+		},
+		"as the winner": func(t *testing.T, ws *websocket.Conn) {
+			t.Helper()
+
+			writeMessage(t, ws, "3")
+			writeMessage(t, ws, oversized+" wins")
+		},
+	}
+
+	for name, act := range cases {
+		t.Run(name, func(t *testing.T) {
+			restore := server.SetWSReadLimitsForTest(5*time.Second, 5*time.Second, 1024)
+			defer restore()
+
+			game := &finishSignalGame{finished: make(chan string, 1)}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			act(t, ws)
+
+			assertServerClosesWS(t, ws)
+
+			select {
+			case winner := <-game.finished:
+				t.Errorf("Finish was called with %q for an oversized message", winner)
+			default:
+			}
+		})
+	}
+}
+
+func TestWebSocketAcceptsMessageAtReadLimit(t *testing.T) {
+	restore := server.SetWSReadLimitsForTest(5*time.Second, 5*time.Second, 1024)
+	defer restore()
+
+	game := &finishSignalGame{finished: make(chan string, 1)}
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+	defer func() { _ = ws.Close() }()
+
+	name := strings.Repeat("a", 1024)
+
+	writeMessage(t, ws, "3")
+	writeMessage(t, ws, name)
+
+	select {
+	case winner := <-game.finished:
+		if winner != name {
+			t.Errorf("Finish got a %d byte winner, want the %d byte one", len(winner), len(name))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a message exactly at the read limit was rejected")
+	}
+}
+
 func assertServerClosesWS(t *testing.T, ws *websocket.Conn) {
 	t.Helper()
 

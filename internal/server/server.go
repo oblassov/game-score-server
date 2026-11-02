@@ -109,7 +109,7 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	numberOfPlayersMsg, err := ws.WaitForMsg()
+	numberOfPlayersMsg, err := ws.WaitForMsg(setupReadTimeout)
 	if err != nil {
 		log.Println("couldn't read the numberOfPlayers: ", err)
 		return
@@ -131,7 +131,7 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	stop := p.game.Start(numberOfPlayers, ws)
 	defer stop()
 
-	rawWinner, err := ws.WaitForMsg()
+	rawWinner, err := ws.WaitForMsg(winnerReadTimeout)
 	if err != nil {
 		log.Println("couldn't read the winner: ", err)
 		return

@@ -1,8 +1,11 @@
 package server
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -16,6 +19,23 @@ const (
 	// messageWriteTimeout bounds a single Write so a client that stopped
 	// reading cannot block the game (and the Alerter cancel barrier) forever.
 	messageWriteTimeout = 2 * time.Second
+	// drainTimeout and maxDrainBytes bound how long and how much the server
+	// discards after an oversized message, before closing the connection.
+	drainTimeout  = 500 * time.Millisecond
+	maxDrainBytes = 1 << 20
+)
+
+// Read-side limits, vars so tests can shrink them.
+var (
+	// setupReadTimeout bounds waiting for the player-count message.
+	setupReadTimeout = 30 * time.Second
+	// winnerReadTimeout bounds waiting for the winner message. It must
+	// outlast the longest possible game: the blind schedule has 11 blinds
+	// (the last fires at 10*(5+n) minutes for n players), which is about
+	// 17.5 hours for engine.MaxPlayers (100) players. 24h leaves margin.
+	winnerReadTimeout = 24 * time.Hour
+	// maxMessageSize is the largest inbound message, in bytes.
+	maxMessageSize int64 = 1024
 )
 
 type playerServerWS struct {
@@ -32,16 +52,52 @@ func newPlayerServerWS(w http.ResponseWriter, r *http.Request) *playerServerWS {
 		return nil
 	}
 
+	conn.SetReadLimit(maxMessageSize)
+
 	return &playerServerWS{Conn: conn}
 }
 
-func (w *playerServerWS) WaitForMsg() (string, error) {
+// WaitForMsg reads one message, failing if none arrives within timeout.
+func (w *playerServerWS) WaitForMsg(timeout time.Duration) (string, error) {
+	if err := w.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		return "", fmt.Errorf("setting websocket read deadline: %w", err)
+	}
+
 	_, msg, err := w.ReadMessage()
 	if err != nil {
+		if errors.Is(err, websocket.ErrReadLimit) {
+			w.drainInput()
+		}
+
 		return "", fmt.Errorf("reading websocket message: %w", err)
 	}
 
 	return string(msg), nil
+}
+
+// drainInput briefly discards what an oversized message's sender is still
+// writing. Closing a socket with unread input resets the connection, which
+// would stop the client from reading the close frame gorilla already sent.
+func (w *playerServerWS) drainInput() {
+	nc := w.NetConn()
+	if err := nc.SetReadDeadline(time.Now().Add(drainTimeout)); err != nil {
+		log.Println("couldn't set the drain deadline: ", err)
+		return
+	}
+
+	_, err := io.CopyN(io.Discard, nc, maxDrainBytes)
+
+	if err != nil && !isExpectedDrainEnd(err) {
+		log.Println("couldn't drain the oversized message: ", err)
+	}
+}
+
+// isExpectedDrainEnd reports whether err is how a drain normally ends: the
+// client hung up or went quiet until the drain deadline.
+func isExpectedDrainEnd(err error) bool {
+	var netErr net.Error
+
+	return errors.Is(err, io.EOF) || (errors.As(err, &netErr) && netErr.Timeout())
 }
 
 // Close marks the wrapper as closed and closes the underlying connection.
