@@ -63,10 +63,12 @@ func (cli *CLI) readLine() string {
 }
 
 func extractWinner(userInput string) (string, error) {
+	const suffix = " wins"
 
-	if !strings.Contains(userInput, "wins") {
+	name, ok := strings.CutSuffix(userInput, suffix)
+	if !ok || strings.TrimSpace(name) == "" {
 		return "", errors.New(BadWinnerInputErrMsg)
 	}
 
-	return strings.Replace(userInput, " wins", "", 1), nil
+	return name, nil
 }
