@@ -11,10 +11,15 @@ import (
 	"github.com/oblassov/game-score-server/internal/storage/filesystem"
 )
 
-const dbFileName = "./game.db.json"
+const dbFileName = "game.db.json"
 
 func main() {
-	store, closeStore, err := filesystem.PlayerStoreFromFile(dbFileName)
+	dbPath, err := filesystem.PathNextToExecutable(dbFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	store, closeStore, err := filesystem.PlayerStoreFromFile(dbPath)
 
 	if err != nil {
 		log.Fatal(err)

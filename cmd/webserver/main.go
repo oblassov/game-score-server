@@ -12,12 +12,17 @@ import (
 )
 
 const (
-	dbFileName = "./game.db.json"
+	dbFileName = "game.db.json"
 	listenAddr = ":5000"
 )
 
 func main() {
-	store, closeStore, err := filesystem.PlayerStoreFromFile(dbFileName)
+	dbPath, err := filesystem.PathNextToExecutable(dbFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	store, closeStore, err := filesystem.PlayerStoreFromFile(dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}
