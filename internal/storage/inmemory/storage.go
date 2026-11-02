@@ -35,7 +35,10 @@ func (i *PlayerStore) GetLeague() engine.League {
 	}
 
 	sort.Slice(league, func(a, b int) bool {
-		return league[a].Wins > league[b].Wins
+		if league[a].Wins != league[b].Wins {
+			return league[a].Wins > league[b].Wins
+		}
+		return league[a].Name < league[b].Name
 	})
 
 	return league

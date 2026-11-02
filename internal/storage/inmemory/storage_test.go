@@ -28,6 +28,27 @@ func TestGetLeagueSortedByWinsDescending(t *testing.T) {
 	}
 }
 
+func TestGetLeagueBreaksTiesByName(t *testing.T) {
+	store := NewInMemoryPlayerStore()
+	for _, name := range []string{"Pepper", "Cleo", "Bob", "Ann", "Chris"} {
+		store.RecordWin(name)
+	}
+
+	// Map iteration order is random, so repeat to catch an unordered tie.
+	want := []string{"Ann", "Bob", "Chris", "Cleo", "Pepper"}
+	for range 50 {
+		league := store.GetLeague()
+		if len(league) != len(want) {
+			t.Fatalf("got %d players, want %d", len(league), len(want))
+		}
+		for i, name := range want {
+			if league[i].Name != name {
+				t.Fatalf("ties not ordered by name: %v", league)
+			}
+		}
+	}
+}
+
 // Fails under -race if GetLeague, GetPlayerScore or RecordWin touch the map
 // without the lock, and fails without -race if a win is lost.
 func TestStoreConcurrentReadersAndWriters(t *testing.T) {

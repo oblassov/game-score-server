@@ -94,7 +94,10 @@ func (f *PlayerStore) GetLeague() engine.League {
 	league := make(engine.League, len(f.league))
 	copy(league, f.league)
 	sort.Slice(league, func(i, j int) bool {
-		return league[i].Wins > league[j].Wins
+		if league[i].Wins != league[j].Wins {
+			return league[i].Wins > league[j].Wins
+		}
+		return league[i].Name < league[j].Name
 	})
 
 	return league
