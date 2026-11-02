@@ -85,10 +85,14 @@ func initializePlayerDBFile(file *os.File) error {
 func (f *PlayerStore) GetLeague() engine.League {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
-	sort.Slice(f.league, func(i, j int) bool {
-		return f.league[i].Wins > f.league[j].Wins
+
+	league := make(engine.League, len(f.league))
+	copy(league, f.league)
+	sort.Slice(league, func(i, j int) bool {
+		return league[i].Wins > league[j].Wins
 	})
-	return f.league
+
+	return league
 }
 
 func (f *PlayerStore) GetPlayerScore(name string) int {
