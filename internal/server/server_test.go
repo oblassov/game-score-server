@@ -326,3 +326,19 @@ func TestPlayersRejectsUnsupportedMethod(t *testing.T) {
 
 	tests.AssertStatus(t, response, http.StatusMethodNotAllowed)
 }
+
+func TestPlayersMethodNotAllowedSetsAllowHeader(t *testing.T) {
+	playerServer := mustMakePlayerServer(t, &tests.StubPlayerStore{}, &tests.GameSpy{})
+	request := httptest.NewRequest(http.MethodDelete, "/players/Pepper", http.NoBody)
+	response := httptest.NewRecorder()
+
+	playerServer.ServeHTTP(response, request)
+
+	result := response.Result()
+	defer func() { _ = result.Body.Close() }()
+
+	want := "GET, POST"
+	if got := result.Header.Get("Allow"); got != want {
+		t.Errorf("got Allow header %q, want %q", got, want)
+	}
+}
