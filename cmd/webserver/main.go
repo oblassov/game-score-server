@@ -11,7 +11,10 @@ import (
 	"github.com/oblassov/game-score-server/internal/storage/filesystem"
 )
 
-const dbFileName = "./game.db.json"
+const (
+	dbFileName = "./game.db.json"
+	listenAddr = ":5000"
+)
 
 func main() {
 	store, closeStore, err := filesystem.PlayerStoreFromFile(dbFileName)
@@ -28,17 +31,21 @@ func main() {
 		return
 	}
 
-	srv := &http.Server{
-		Addr:         "5000",
-		Handler:      playerServer.Handler,
+	srv := newHTTPServer(playerServer.Handler)
+
+	log.Printf("Starting a server on localhost%s", listenAddr)
+	if err := srv.ListenAndServe(); err != nil {
+		log.Printf("could not listen on %s %v", listenAddr, err)
+		return
+	}
+}
+
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:         listenAddr,
+		Handler:      handler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 		IdleTimeout:  5 * time.Second,
-	}
-
-	log.Println("Starting a server on localhost:5000")
-	if err := srv.ListenAndServe(); err != nil {
-		log.Printf("could not listen on port 5000 %v", err)
-		return
 	}
 }
