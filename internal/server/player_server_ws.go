@@ -16,6 +16,7 @@ func newPlayerServerWS(w http.ResponseWriter, r *http.Request) *playerServerWS {
 
 	if err != nil {
 		log.Printf("problem upgrading connection to WebSockets %v\n", err)
+		return nil
 	}
 
 	return &playerServerWS{conn}

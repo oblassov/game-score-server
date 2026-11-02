@@ -95,6 +95,9 @@ func (p *PlayerServer) playGame(w http.ResponseWriter, _ *http.Request) {
 
 func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	ws := newPlayerServerWS(w, r)
+	if ws == nil {
+		return
+	}
 
 	numberOfPlayersMsg := ws.WaitForMsg()
 	numberOfPlayers, err := strconv.Atoi(numberOfPlayersMsg)

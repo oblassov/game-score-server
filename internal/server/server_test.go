@@ -269,3 +269,19 @@ func assertGameStartedWith(t testing.TB, game *tests.GameSpy, numberOfPlayers in
 	}
 
 }
+
+func TestWebSocketRejectsNonUpgradeRequest(t *testing.T) {
+	playerServer := mustMakePlayerServer(t, &tests.StubPlayerStore{}, &tests.GameSpy{})
+	request := httptest.NewRequest(http.MethodGet, "/ws", http.NoBody)
+	response := httptest.NewRecorder()
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("handler panicked on a plain GET /ws: %v", r)
+		}
+	}()
+
+	playerServer.ServeHTTP(response, request)
+
+	tests.AssertStatus(t, response, http.StatusBadRequest)
+}
