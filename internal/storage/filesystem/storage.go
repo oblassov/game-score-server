@@ -122,5 +122,11 @@ func (f *PlayerStore) RecordWin(name string) {
 
 	if err := f.database.Encode(f.league); err != nil {
 		log.Printf("couldn't encode the db: %v", err)
+
+		if player != nil {
+			player.Wins--
+		} else {
+			f.league = f.league[:len(f.league)-1]
+		}
 	}
 }

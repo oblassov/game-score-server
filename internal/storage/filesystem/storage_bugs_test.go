@@ -80,6 +80,46 @@ func TestNewPlayerStoreWrapsUnderlyingErrors(t *testing.T) {
 	}
 }
 
+// A failed write must not leave the in-memory league ahead of the file.
+func TestRecordWinRollsBackWhenWriteFails(t *testing.T) {
+	cases := []struct {
+		name   string
+		player string
+		want   int
+	}{
+		{name: "existing player keeps old score", player: "Cleo", want: 10},
+		{name: "new player is not added", player: "Pepper", want: 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			database, err := os.CreateTemp(t.TempDir(), "db")
+			if err != nil {
+				t.Fatalf("could not create temp file: %v", err)
+			}
+			defer func() { _ = database.Close() }()
+
+			if _, err = database.WriteString(`[{"Name": "Cleo", "Wins": 10}]`); err != nil {
+				t.Fatalf("could not seed file: %v", err)
+			}
+
+			store, err := NewPlayerStore(database)
+			tests.AssertNoError(t, err)
+
+			if err = database.Close(); err != nil {
+				t.Fatalf("could not close file: %v", err)
+			}
+
+			store.RecordWin(tc.player)
+
+			tests.AssertScoreEquals(t, store.GetPlayerScore(tc.player), tc.want)
+			if got := len(store.GetLeague()); got != 1 {
+				t.Errorf("league has %d players after failed write, want 1", got)
+			}
+		})
+	}
+}
+
 // Currently exits the test binary via log.Fatalf instead of returning an error.
 func TestPlayerStoreFromFileReturnsErrorOnBadPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing-dir", "db.json")
