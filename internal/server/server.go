@@ -83,6 +83,8 @@ func (p *PlayerServer) playersHandler(w http.ResponseWriter, r *http.Request) {
 		p.processWin(w, player)
 	case http.MethodGet:
 		p.showScore(w, player)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 
 }

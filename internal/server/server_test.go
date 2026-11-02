@@ -285,3 +285,13 @@ func TestWebSocketRejectsNonUpgradeRequest(t *testing.T) {
 
 	tests.AssertStatus(t, response, http.StatusBadRequest)
 }
+
+func TestPlayersRejectsUnsupportedMethod(t *testing.T) {
+	playerServer := mustMakePlayerServer(t, &tests.StubPlayerStore{}, &tests.GameSpy{})
+	request := httptest.NewRequest(http.MethodPut, "/players/Pepper", http.NoBody)
+	response := httptest.NewRecorder()
+
+	playerServer.ServeHTTP(response, request)
+
+	tests.AssertStatus(t, response, http.StatusMethodNotAllowed)
+}
