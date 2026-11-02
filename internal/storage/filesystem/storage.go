@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,23 +19,26 @@ type PlayerStore struct {
 	lock     sync.RWMutex
 }
 
-func PlayerStoreFromFile(path string) (*PlayerStore, func(), error) {
+func PlayerStoreFromFile(path string) (*PlayerStore, func() error, error) {
 
 	db, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666)
 	if err != nil {
 		return nil, nil, fmt.Errorf("problem opening %s: %w", path, err)
 	}
 
-	closeFunc := func() {
+	closeFunc := func() error {
 		if closeErr := db.Close(); closeErr != nil {
-			log.Printf("couldn't close the %s: %v", path, closeErr)
+			return fmt.Errorf("couldn't close %s: %w", path, closeErr)
 		}
+		return nil
 	}
 
 	store, err := NewPlayerStore(db)
 	if err != nil {
-		closeFunc()
-		return nil, nil, fmt.Errorf("problem creating file system store: %w", err)
+		return nil, nil, errors.Join(
+			fmt.Errorf("problem creating file system store: %w", err),
+			closeFunc(),
+		)
 	}
 
 	return store, closeFunc, nil

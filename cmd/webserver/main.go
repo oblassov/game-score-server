@@ -26,7 +26,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer closeStore()
+	defer func() {
+		if closeErr := closeStore(); closeErr != nil {
+			log.Printf("problem closing the store: %v", closeErr)
+		}
+	}()
 
 	game := texasholdem.NewTexasHoldem(store, engine.BlindAlerterFunc(engine.Alerter))
 	playerServer, err := server.NewPlayerServer(store, game)

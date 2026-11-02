@@ -133,7 +133,25 @@ func TestPlayerStoreFromFileReturnsErrorOnBadPath(t *testing.T) {
 
 	_, closeFunc, err := PlayerStoreFromFile(path)
 	if err == nil {
-		closeFunc()
+		_ = closeFunc()
 		t.Fatal("expected an error for an unopenable path, got nil")
+	}
+}
+
+// The close func must report a failed Close to the caller instead of only logging it.
+func TestPlayerStoreFromFileCloseFuncReturnsCloseError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "db.json")
+
+	_, closeFunc, err := PlayerStoreFromFile(path)
+	tests.AssertNoError(t, err)
+
+	err = closeFunc()
+	if err != nil {
+		t.Fatalf("first close: expected nil error, got %v", err)
+	}
+
+	err = closeFunc()
+	if !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("second close: expected an error wrapping os.ErrClosed, got %v", err)
 	}
 }
