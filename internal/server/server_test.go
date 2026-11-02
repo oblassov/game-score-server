@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -297,6 +298,54 @@ func TestWebSocketClosedAfterGameFinishes(t *testing.T) {
 
 	writeMessage(t, ws, "3")
 	writeMessage(t, ws, "Ruth")
+
+	assertServerClosesWS(t, ws)
+}
+
+type outputCapturingGame struct {
+	mu  sync.Mutex
+	out io.Writer
+}
+
+func (g *outputCapturingGame) Start(_ int, out io.Writer) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.out = out
+}
+
+func (g *outputCapturingGame) Finish(string) {}
+
+func (g *outputCapturingGame) output() io.Writer {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.out
+}
+
+func TestLateBlindAlertAfterGameEndsIsDropped(t *testing.T) {
+	game := &outputCapturingGame{}
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+	defer func() { _ = ws.Close() }()
+
+	writeMessage(t, ws, "3")
+	writeMessage(t, ws, "Ruth")
+
+	assertServerClosesWS(t, ws)
+
+	out := game.output()
+	if out == nil {
+		t.Fatal("game was never started")
+	}
+
+	if _, err := fmt.Fprint(out, "Blind is now 200\n"); err != nil {
+		t.Errorf("late blind alert after the game ended returned an error: %v", err)
+	}
+}
+
+func assertServerClosesWS(t *testing.T, ws *websocket.Conn) {
+	t.Helper()
 
 	if err := ws.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatalf("could not set read deadline: %v", err)
