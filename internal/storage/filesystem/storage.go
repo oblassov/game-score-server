@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 type PlayerStore struct {
 	database *json.Encoder
 	league   engine.League
+	path     string
 	lock     sync.RWMutex
 }
 
@@ -61,6 +63,7 @@ func NewPlayerStore(file *os.File) (*PlayerStore, error) {
 	return &PlayerStore{
 		database: json.NewEncoder(&tape{file}),
 		league:   league,
+		path:     file.Name(),
 	}, nil
 
 }
@@ -119,21 +122,43 @@ func (f *PlayerStore) GetPlayerScore(name string) int {
 func (f *PlayerStore) RecordWin(name string) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	player := f.league.Find(name)
+
+	// Another store may have rewritten the file since we last read it, so
+	// start from what is on disk rather than from the cached league.
+	league, err := f.readLeague()
+	if err != nil {
+		log.Printf("couldn't re-read the db: %v", err)
+		return
+	}
+
+	player := league.Find(name)
 
 	if player != nil {
 		player.Wins++
 	} else {
-		f.league = append(f.league, engine.Player{Name: name, Wins: 1})
+		league = append(league, engine.Player{Name: name, Wins: 1})
 	}
 
-	if err := f.database.Encode(f.league); err != nil {
+	if err := f.database.Encode(league); err != nil {
 		log.Printf("couldn't encode the db: %v", err)
-
-		if player != nil {
-			player.Wins--
-		} else {
-			f.league = f.league[:len(f.league)-1]
-		}
+		return
 	}
+
+	f.league = league
+}
+
+func (f *PlayerStore) readLeague() (engine.League, error) {
+	// tape.Write renames a new file over path, so the held *os.File points at
+	// a stale inode; read by path instead.
+	data, err := os.ReadFile(f.path)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't read %s: %w", f.path, err)
+	}
+
+	league, err := engine.NewLeague(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("couldn't load league from %s: %w", f.path, err)
+	}
+
+	return league, nil
 }
