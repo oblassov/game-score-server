@@ -133,6 +133,11 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.TrimSpace(winner) == "" {
+		log.Println("blank winner, not finishing the game")
+		return
+	}
+
 	p.game.Finish(winner)
 }
 

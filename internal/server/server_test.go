@@ -425,6 +425,31 @@ func TestWebSocketClientDisconnectBeforeWinnerDoesNotFinishGame(t *testing.T) {
 	}
 }
 
+func TestWebSocketBlankWinnerDoesNotFinishGame(t *testing.T) {
+	for name, blank := range map[string]string{
+		"empty message":       "",
+		"whitespace-only one": "  \t ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			game := &finishSignalGame{finished: make(chan string, 1)}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			writeMessage(t, ws, "3")
+			writeMessage(t, ws, blank)
+
+			select {
+			case winner := <-game.finished:
+				t.Errorf("Finish was called with %q for a blank winner name", winner)
+			case <-time.After(500 * time.Millisecond):
+			}
+		})
+	}
+}
+
 func assertServerClosesWS(t *testing.T, ws *websocket.Conn) {
 	t.Helper()
 
