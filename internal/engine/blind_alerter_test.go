@@ -1,6 +1,9 @@
 package engine_test
 
 import (
+	"errors"
+	"io"
+	"log"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +29,60 @@ func (b *lockedBuffer) String() string {
 	defer b.mu.Unlock()
 
 	return b.buf.String()
+}
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestAlerterLogsWriteError(t *testing.T) {
+	logs := &lockedBuffer{}
+	prevOut := log.Writer()
+	log.SetOutput(logs)
+	t.Cleanup(func() { log.SetOutput(prevOut) })
+
+	writeErr := errors.New("disk on fire")
+	engine.Alerter(time.Millisecond, 100, failingWriter{err: writeErr})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for logs.String() == "" && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	got := logs.String()
+	for _, want := range []string{"couldn't print current blind", writeErr.Error()} {
+		if !strings.Contains(got, want) {
+			t.Errorf("log %q does not contain %q", got, want)
+		}
+	}
+}
+
+func TestBlindAlerterFuncForwardsToTheFunction(t *testing.T) {
+	var (
+		gotDuration time.Duration
+		gotAmount   int
+		gotWriter   io.Writer
+		cancelled   bool
+	)
+
+	alerter := engine.BlindAlerterFunc(func(d time.Duration, amount int, to io.Writer) func() {
+		gotDuration, gotAmount, gotWriter = d, amount, to
+
+		return func() { cancelled = true }
+	})
+
+	out := &lockedBuffer{}
+	cancel := alerter.ScheduleAlertAt(3*time.Second, 200, out)
+
+	if gotDuration != 3*time.Second || gotAmount != 200 || gotWriter != io.Writer(out) {
+		t.Errorf("got (%v, %d, %v), want (3s, 200, out)", gotDuration, gotAmount, gotWriter)
+	}
+
+	cancel()
+
+	if !cancelled {
+		t.Error("returned cancel func is not the one from the wrapped function")
+	}
 }
 
 func TestAlerterCancelStopsTheAlert(t *testing.T) {
