@@ -127,13 +127,14 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 
 	p.game.Start(numberOfPlayers, ws)
 
-	winner, err := ws.WaitForMsg()
+	rawWinner, err := ws.WaitForMsg()
 	if err != nil {
 		log.Println("couldn't read the winner: ", err)
 		return
 	}
 
-	if strings.TrimSpace(winner) == "" {
+	winner := strings.TrimSpace(rawWinner)
+	if winner == "" {
 		log.Println("blank winner, not finishing the game")
 		return
 	}

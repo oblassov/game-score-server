@@ -450,6 +450,34 @@ func TestWebSocketBlankWinnerDoesNotFinishGame(t *testing.T) {
 	}
 }
 
+func TestWebSocketTrimsWinnerName(t *testing.T) {
+	for name, sent := range map[string]string{
+		"surrounding spaces": " Alice ",
+		"tabs and newline":   "\tAlice\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			game := &finishSignalGame{finished: make(chan string, 1)}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			writeMessage(t, ws, "3")
+			writeMessage(t, ws, sent)
+
+			select {
+			case winner := <-game.finished:
+				if winner != "Alice" {
+					t.Errorf("Finish was called with %q, want %q", winner, "Alice")
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("Finish was not called")
+			}
+		})
+	}
+}
+
 func assertServerClosesWS(t *testing.T, ws *websocket.Conn) {
 	t.Helper()
 
