@@ -38,6 +38,7 @@ func TestGETPlayers(t *testing.T) {
 		playerServer.ServeHTTP(response, request)
 
 		tests.AssertStatus(t, response, http.StatusNotFound)
+		tests.AssertResponseBody(t, response.Body.String(), "0")
 	})
 
 	t.Run("returns Pepper's score", func(t *testing.T) {
