@@ -112,6 +112,7 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	numberOfPlayers, err := strconv.Atoi(numberOfPlayersMsg)
 	if err != nil {
 		log.Println("couldn't convert the numberOfPlayers: ", err)
+		return
 	}
 
 	p.game.Start(numberOfPlayers, ws)

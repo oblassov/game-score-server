@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -341,6 +342,35 @@ func TestLateBlindAlertAfterGameEndsIsDropped(t *testing.T) {
 
 	if _, err := fmt.Fprint(out, "Blind is now 200\n"); err != nil {
 		t.Errorf("late blind alert after the game ended returned an error: %v", err)
+	}
+}
+
+type startRecorderGame struct {
+	started atomic.Bool
+}
+
+func (g *startRecorderGame) Start(_ int, _ io.Writer) { g.started.Store(true) }
+
+func (g *startRecorderGame) Finish(_ string) {}
+
+func TestWebSocketRejectsInvalidPlayerCount(t *testing.T) {
+	for _, count := range []string{"abc", "", "3 players"} {
+		t.Run(fmt.Sprintf("count %q", count), func(t *testing.T) {
+			game := &startRecorderGame{}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			writeMessage(t, ws, count)
+
+			assertServerClosesWS(t, ws)
+
+			if game.started.Load() {
+				t.Error("game was started with an invalid player count")
+			}
+		})
 	}
 }
 
