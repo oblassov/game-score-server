@@ -85,6 +85,75 @@ func TestBlindAlerterFuncForwardsToTheFunction(t *testing.T) {
 	}
 }
 
+type blockingWriter struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (w *blockingWriter) Write(p []byte) (int, error) {
+	close(w.started)
+	<-w.release
+
+	return len(p), nil
+}
+
+func TestAlerterCancelWaitsForInFlightWrite(t *testing.T) {
+	t.Run("cancel blocks until the in-flight write returns", func(t *testing.T) {
+		w := &blockingWriter{started: make(chan struct{}), release: make(chan struct{})}
+		cancel := engine.Alerter(time.Millisecond, 100, w)
+
+		select {
+		case <-w.started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("alert never started writing")
+		}
+
+		returned := make(chan struct{})
+		go func() {
+			cancel()
+			close(returned)
+		}()
+
+		select {
+		case <-returned:
+			close(w.release)
+			t.Fatal("cancel returned while the write was still in flight")
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		close(w.release)
+
+		select {
+		case <-returned:
+		case <-time.After(2 * time.Second):
+			t.Fatal("cancel did not return after the write finished")
+		}
+	})
+
+	t.Run("cancel after the alert finished returns promptly and can repeat", func(t *testing.T) {
+		out := &lockedBuffer{}
+		cancel := engine.Alerter(time.Millisecond, 100, out)
+
+		deadline := time.Now().Add(2 * time.Second)
+		for out.String() == "" && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+
+		returned := make(chan struct{})
+		go func() {
+			cancel()
+			cancel()
+			close(returned)
+		}()
+
+		select {
+		case <-returned:
+		case <-time.After(2 * time.Second):
+			t.Fatal("cancel blocked after the alert had finished")
+		}
+	})
+}
+
 func TestAlerterCancelStopsTheAlert(t *testing.T) {
 	t.Run("alert fires when not cancelled", func(t *testing.T) {
 		out := &lockedBuffer{}
