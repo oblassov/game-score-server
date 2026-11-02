@@ -2,8 +2,10 @@ package server_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -284,6 +286,35 @@ func TestWebSocketRejectsNonUpgradeRequest(t *testing.T) {
 	playerServer.ServeHTTP(response, request)
 
 	tests.AssertStatus(t, response, http.StatusBadRequest)
+}
+
+func TestWebSocketClosedAfterGameFinishes(t *testing.T) {
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, &tests.GameSpy{}))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+	defer func() { _ = ws.Close() }()
+
+	writeMessage(t, ws, "3")
+	writeMessage(t, ws, "Ruth")
+
+	if err := ws.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("could not set read deadline: %v", err)
+	}
+
+	for {
+		_, _, err := ws.ReadMessage()
+		if err == nil {
+			continue
+		}
+
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			t.Fatal("server kept the websocket open after the game finished")
+		}
+
+		return
+	}
 }
 
 func TestPlayersRejectsUnsupportedMethod(t *testing.T) {

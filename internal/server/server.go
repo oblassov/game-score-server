@@ -101,6 +101,12 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer func() {
+		if err := ws.Close(); err != nil {
+			log.Println("couldn't close the websocket: ", err)
+		}
+	}()
+
 	numberOfPlayersMsg := ws.WaitForMsg()
 	numberOfPlayers, err := strconv.Atoi(numberOfPlayersMsg)
 	if err != nil {
