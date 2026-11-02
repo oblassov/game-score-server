@@ -66,7 +66,8 @@ func extractWinner(userInput string) (string, error) {
 	const suffix = " wins"
 
 	name, ok := strings.CutSuffix(userInput, suffix)
-	if !ok || strings.TrimSpace(name) == "" {
+	name = strings.TrimSpace(name)
+	if !ok || name == "" {
 		return "", errors.New(BadWinnerInputErrMsg)
 	}
 
