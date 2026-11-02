@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -148,6 +149,63 @@ func assertGameStartedWith(t testing.TB, game *tests.GameSpy, numberOfPlayers in
 		t.Errorf("wanted Start called with %d, but go %d", numberOfPlayers, game.GetStartedWith())
 	}
 
+}
+
+type failingReader struct {
+	data string
+	err  error
+}
+
+func (r *failingReader) Read(p []byte) (int, error) {
+	if r.data == "" {
+		return 0, r.err
+	}
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	return n, nil
+}
+
+func TestCLIReadErrors(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	t.Run("a read error on the player count is returned and not reported as bad input", func(t *testing.T) {
+		stdOut := &bytes.Buffer{}
+		game := &tests.GameSpy{}
+
+		err := cli.NewCLI(&failingReader{err: errBoom}, stdOut, game).PlayPoker()
+
+		if !errors.Is(err, errBoom) {
+			t.Fatalf("got error %v, want it to wrap %v", err, errBoom)
+		}
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt)
+		assertGameNotStarted(t, game)
+	})
+
+	t.Run("a read error on the winner line is returned and the game is not finished", func(t *testing.T) {
+		stdOut := &bytes.Buffer{}
+		game := &tests.GameSpy{}
+		in := &failingReader{data: "3\n", err: errBoom}
+
+		err := cli.NewCLI(in, stdOut, game).PlayPoker()
+
+		if !errors.Is(err, errBoom) {
+			t.Fatalf("got error %v, want it to wrap %v", err, errBoom)
+		}
+		assertGameNotFinished(t, game)
+		if strings.Contains(stdOut.String(), cli.BadWinnerInputErrMsg) {
+			t.Errorf("read error was reported as bad winner input: %q", stdOut.String())
+		}
+	})
+
+	t.Run("plain EOF is still reported as bad input without an error", func(t *testing.T) {
+		stdOut := &bytes.Buffer{}
+		game := &tests.GameSpy{}
+
+		err := cli.NewCLI(userSends(), stdOut, game).PlayPoker()
+
+		tests.AssertNoError(t, err)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg)
+	})
 }
 
 func assertMessagesSentToUser(t testing.TB, stdOut *bytes.Buffer, messages ...string) {

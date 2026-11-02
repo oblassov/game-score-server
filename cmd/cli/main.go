@@ -14,15 +14,23 @@ import (
 const dbFileName = "game.db.json"
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run holds the program body so deferred cleanup (closing the store) runs
+// before main calls log.Fatal, which would otherwise skip it.
+func run() error {
 	dbPath, err := filesystem.PathNextToExecutable(dbFileName)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	store, closeStore, err := filesystem.PlayerStoreFromFile(dbPath)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer func() {
 		if closeErr := closeStore(); closeErr != nil {
@@ -35,5 +43,5 @@ func main() {
 	game := texasholdem.NewTexasHoldem(store, engine.BlindAlerterFunc(engine.Alerter))
 
 	gameCLI := cli.NewCLI(os.Stdin, os.Stdout, game)
-	gameCLI.PlayPoker()
+	return gameCLI.PlayPoker()
 }
