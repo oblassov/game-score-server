@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 	"github.com/oblassov/game-score-server/internal/engine"
@@ -159,7 +160,14 @@ func (p *PlayerServer) showScore(w http.ResponseWriter, player string) {
 	}
 }
 
-func (p *PlayerServer) processWin(w http.ResponseWriter, player string) {
+func (p *PlayerServer) processWin(w http.ResponseWriter, rawPlayer string) {
+	player := strings.TrimSpace(rawPlayer)
+	if player == "" || !utf8.ValidString(player) {
+		log.Println("couldn't record the win: invalid player name")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	p.store.RecordWin(player)
 	w.WriteHeader(http.StatusAccepted)
 }

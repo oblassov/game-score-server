@@ -109,6 +109,44 @@ func TestStoreWins(t *testing.T) {
 	})
 }
 
+func TestStoreWinsRejectsBadNames(t *testing.T) {
+	cases := map[string]string{
+		"empty name":         "",
+		"whitespace only":    "%20%20",
+		"tab only":           "%09",
+		"invalid UTF-8":      "%FF",
+		"invalid UTF-8 mid":  "Al%FFice",
+		"padded invalid one": "%20%FF%20",
+	}
+
+	for name, rawName := range cases {
+		t.Run(name, func(t *testing.T) {
+			store := tests.StubPlayerStore{Scores: map[string]int{}}
+			playerServer := mustMakePlayerServer(t, &store, tests.DummyGame)
+
+			response := httptest.NewRecorder()
+			playerServer.ServeHTTP(response, newPostWinRequest(rawName))
+
+			tests.AssertStatus(t, response, http.StatusBadRequest)
+
+			if len(store.WinCalls) != 0 {
+				t.Errorf("expected no win recorded, got %v", store.WinCalls)
+			}
+		})
+	}
+}
+
+func TestStoreWinsTrimsName(t *testing.T) {
+	store := tests.StubPlayerStore{Scores: map[string]int{}}
+	playerServer := mustMakePlayerServer(t, &store, tests.DummyGame)
+
+	response := httptest.NewRecorder()
+	playerServer.ServeHTTP(response, newPostWinRequest("%20Alice%20"))
+
+	tests.AssertStatus(t, response, http.StatusAccepted)
+	tests.AssertPlayerWin(t, &store, "Alice")
+}
+
 func TestGame(t *testing.T) {
 	t.Run("Get /game returns 200", func(t *testing.T) {
 		game := &tests.GameSpy{}
