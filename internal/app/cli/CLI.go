@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/oblassov/game-score-server/internal/engine"
 )
@@ -77,11 +78,15 @@ func (cli *CLI) readLine() (string, error) {
 }
 
 func extractWinner(userInput string) (string, error) {
-	const suffix = " wins"
+	const suffix = "wins"
 
-	name, ok := strings.CutSuffix(strings.TrimRightFunc(userInput, unicode.IsSpace), suffix)
-	name = strings.TrimSpace(name)
-	if !ok || name == "" {
+	head, ok := strings.CutSuffix(strings.TrimRightFunc(userInput, unicode.IsSpace), suffix)
+	if last, _ := utf8.DecodeLastRuneInString(head); !ok || !unicode.IsSpace(last) {
+		return "", errors.New(BadWinnerInputErrMsg)
+	}
+
+	name := strings.TrimSpace(head)
+	if name == "" {
 		return "", errors.New(BadWinnerInputErrMsg)
 	}
 
