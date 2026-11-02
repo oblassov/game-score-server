@@ -1,6 +1,9 @@
 package inmemory
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
 
 func TestGetLeagueSortedByWinsDescending(t *testing.T) {
 	store := NewInMemoryPlayerStore()
@@ -25,16 +28,39 @@ func TestGetLeagueSortedByWinsDescending(t *testing.T) {
 	}
 }
 
-// Fails only under -race: GetLeague reads the map without the lock.
-func TestGetLeagueConcurrentWithRecordWin(_ *testing.T) {
+// Fails under -race if GetLeague, GetPlayerScore or RecordWin touch the map
+// without the lock, and fails without -race if a win is lost.
+func TestStoreConcurrentReadersAndWriters(t *testing.T) {
+	const (
+		writers        = 8
+		winsPerWriter  = 200
+		readers        = 4
+		readsPerReader = 200
+	)
 	store := NewInMemoryPlayerStore()
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		store.RecordWin("Pepper")
-	}()
+	var wg sync.WaitGroup
+	wg.Add(writers + readers)
+	for range writers {
+		go func() {
+			defer wg.Done()
+			for range winsPerWriter {
+				store.RecordWin("Pepper")
+			}
+		}()
+	}
+	for range readers {
+		go func() {
+			defer wg.Done()
+			for range readsPerReader {
+				store.GetLeague()
+				store.GetPlayerScore("Pepper")
+			}
+		}()
+	}
+	wg.Wait()
 
-	store.GetLeague()
-	<-done
+	if got, want := store.GetPlayerScore("Pepper"), writers*winsPerWriter; got != want {
+		t.Errorf("got %d wins, want %d", got, want)
+	}
 }
