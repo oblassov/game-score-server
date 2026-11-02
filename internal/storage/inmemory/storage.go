@@ -1,6 +1,7 @@
 package inmemory
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/oblassov/game-score-server/internal/engine"
@@ -32,6 +33,10 @@ func (i *PlayerStore) GetLeague() engine.League {
 	for name, wins := range i.store {
 		league = append(league, engine.Player{Name: name, Wins: wins})
 	}
+
+	sort.Slice(league, func(a, b int) bool {
+		return league[a].Wins > league[b].Wins
+	})
 
 	return league
 }
