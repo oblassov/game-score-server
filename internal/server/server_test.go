@@ -151,6 +151,7 @@ func retryUntil(d time.Duration, f func() bool) bool {
 		if f() {
 			return true
 		}
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	return false
@@ -160,11 +161,11 @@ func assertFinishCalledWith(t testing.TB, game *tests.GameSpy, winner string) {
 	t.Helper()
 
 	passed := retryUntil(500*time.Millisecond, func() bool {
-		return game.FinishedWith == winner
+		return game.GetFinishedWith() == winner
 	})
 
 	if !passed {
-		t.Errorf("expected Finish called with %q, but got %q", winner, game.FinishedWith)
+		t.Errorf("expected Finish called with %q, but got %q", winner, game.GetFinishedWith())
 	}
 
 }
@@ -263,8 +264,8 @@ func getLeagueFromResponse(t testing.TB, body io.Reader) (league engine.League) 
 func assertGameStartedWith(t testing.TB, game *tests.GameSpy, numberOfPlayers int) {
 	t.Helper()
 
-	if game.StartedWith != numberOfPlayers {
-		t.Errorf("wanted Start called with %d, but go %d", numberOfPlayers, game.StartedWith)
+	if game.GetStartedWith() != numberOfPlayers {
+		t.Errorf("wanted Start called with %d, but go %d", numberOfPlayers, game.GetStartedWith())
 	}
 
 }

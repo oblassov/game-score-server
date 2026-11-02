@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -84,24 +85,55 @@ func (s *SpyBlindAlerter) ScheduleAlertAt(at time.Duration, amount int, _ io.Wri
 }
 
 type GameSpy struct {
-	StartedWith int
-	StartCalled bool
-	BlindAlert  []byte
-
+	mu           sync.RWMutex
+	StartedWith  int
+	StartCalled  bool
+	BlindAlert   []byte
 	FinishCalled bool
 	FinishedWith string
 }
 
 func (g *GameSpy) Start(numberOfPlayers int, out io.Writer) {
+	g.mu.Lock()
 	g.StartCalled = true
 	g.StartedWith = numberOfPlayers
-	if _, err := out.Write(g.BlindAlert); err != nil {
+	blindAlert := g.BlindAlert
+	g.mu.Unlock()
+
+	if _, err := out.Write(blindAlert); err != nil {
 		log.Println("couldn't write an alert: ", err)
 	}
 }
 
 func (g *GameSpy) Finish(winner string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.FinishCalled = true
 	g.FinishedWith = winner
+}
+
+func (g *GameSpy) GetStartedWith() int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.StartedWith
+}
+
+func (g *GameSpy) GetFinishedWith() string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.FinishedWith
+}
+
+func (g *GameSpy) GetStartCalled() bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.StartCalled
+}
+
+func (g *GameSpy) GetFinishCalled() bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.FinishCalled
 }
 
 func AssertPlayerWin(t testing.TB, store *StubPlayerStore, winner string) {
