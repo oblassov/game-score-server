@@ -11,7 +11,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const closeWriteTimeout = time.Second
+const (
+	closeWriteTimeout = time.Second
+	// messageWriteTimeout bounds a single Write so a client that stopped
+	// reading cannot block the game (and the Alerter cancel barrier) forever.
+	messageWriteTimeout = 2 * time.Second
+)
 
 type playerServerWS struct {
 	*websocket.Conn
@@ -68,10 +73,14 @@ func (w *playerServerWS) Write(p []byte) (n int, err error) {
 		return len(p), nil
 	}
 
+	if deadlineErr := w.SetWriteDeadline(time.Now().Add(messageWriteTimeout)); deadlineErr != nil {
+		return 0, fmt.Errorf("setting websocket write deadline: %w", deadlineErr)
+	}
+
 	err = w.WriteMessage(websocket.TextMessage, p)
 
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("writing websocket message: %w", err)
 	}
 
 	return len(p), nil

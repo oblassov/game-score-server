@@ -497,6 +497,54 @@ func TestWebSocketStopsGameAlertsWhenHandlerReturns(t *testing.T) {
 	}
 }
 
+// flooderGame models the Alerter barrier: Start spawns a writer that floods the
+// socket, and stop waits for that writer to return (like an in-flight alert).
+type flooderGame struct {
+	stopReturned chan struct{}
+}
+
+func (g *flooderGame) Start(_ int, out io.Writer) (stop func()) {
+	writerDone := make(chan struct{})
+	payload := make([]byte, 1<<20)
+
+	go func() {
+		defer close(writerDone)
+
+		for {
+			if _, err := out.Write(payload); err != nil {
+				return
+			}
+		}
+	}()
+
+	return func() {
+		<-writerDone
+		close(g.stopReturned)
+	}
+}
+
+func (g *flooderGame) Finish(string) {}
+
+func TestWebSocketStopDoesNotHangOnClientThatStoppedReading(t *testing.T) {
+	game := &flooderGame{stopReturned: make(chan struct{})}
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+	defer func() { _ = ws.Close() }()
+
+	writeMessage(t, ws, "3")
+	// The client never reads, so the server's writes back up and block.
+	time.Sleep(200 * time.Millisecond)
+	writeMessage(t, ws, "Ruth")
+
+	select {
+	case <-game.stopReturned:
+	case <-time.After(5 * time.Second):
+		t.Error("stop did not return: a write to a client that stopped reading blocks forever (no write deadline)")
+	}
+}
+
 func TestWebSocketClientDisconnectBeforeWinnerDoesNotFinishGame(t *testing.T) {
 	game := &finishSignalGame{finished: make(chan string, 1)}
 	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
