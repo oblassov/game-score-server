@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -290,6 +291,25 @@ func TestWebSocketRejectsNonUpgradeRequest(t *testing.T) {
 	tests.AssertStatus(t, response, http.StatusBadRequest)
 }
 
+func TestWebSocketAcceptsBoundaryPlayerCount(t *testing.T) {
+	for _, count := range []int{1, 100} {
+		t.Run(fmt.Sprintf("count %d", count), func(t *testing.T) {
+			game := &tests.GameSpy{}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			writeMessage(t, ws, strconv.Itoa(count))
+			writeMessage(t, ws, "Ruth")
+
+			assertServerClosesWS(t, ws)
+			assertGameStartedWith(t, game, count)
+		})
+	}
+}
+
 func TestWebSocketClosedAfterGameFinishes(t *testing.T) {
 	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, &tests.GameSpy{}))
 	defer testServer.Close()
@@ -354,7 +374,10 @@ func (g *startRecorderGame) Start(_ int, _ io.Writer) { g.started.Store(true) }
 func (g *startRecorderGame) Finish(_ string) {}
 
 func TestWebSocketRejectsInvalidPlayerCount(t *testing.T) {
-	for _, count := range []string{"abc", "", "3 players"} {
+	for _, count := range []string{
+		"abc", "", "3 players",
+		"0", "-1", "-5", "-100", "101", "1000000", "9223372036854775807",
+	} {
 		t.Run(fmt.Sprintf("count %q", count), func(t *testing.T) {
 			game := &startRecorderGame{}
 			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))

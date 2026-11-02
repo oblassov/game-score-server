@@ -96,6 +96,11 @@ func (p *PlayerServer) playGame(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+const (
+	minPlayers = 1
+	maxPlayers = 100
+)
+
 func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	ws := newPlayerServerWS(w, r)
 	if ws == nil {
@@ -112,6 +117,11 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	numberOfPlayers, err := strconv.Atoi(numberOfPlayersMsg)
 	if err != nil {
 		log.Println("couldn't convert the numberOfPlayers: ", err)
+		return
+	}
+
+	if numberOfPlayers < minPlayers || numberOfPlayers > maxPlayers {
+		log.Printf("numberOfPlayers %d out of range [%d, %d]", numberOfPlayers, minPlayers, maxPlayers)
 		return
 	}
 
