@@ -24,13 +24,13 @@ func TestGETPlayers(t *testing.T) {
 		},
 	}
 
-	server := mustMakePlayerServer(t, &store, tests.DummyGame)
+	playerServer := mustMakePlayerServer(t, &store, tests.DummyGame)
 
 	t.Run("return 404 on missing players", func(t *testing.T) {
 		request := newGetScoreRequest("Apollo")
 		response := httptest.NewRecorder()
 
-		server.ServeHTTP(response, request)
+		playerServer.ServeHTTP(response, request)
 
 		tests.AssertStatus(t, response, http.StatusNotFound)
 	})
@@ -39,7 +39,7 @@ func TestGETPlayers(t *testing.T) {
 		request := newGetScoreRequest("Pepper")
 		response := httptest.NewRecorder()
 
-		server.ServeHTTP(response, request)
+		playerServer.ServeHTTP(response, request)
 
 		tests.AssertStatus(t, response, http.StatusOK)
 		tests.AssertResponseBody(t, response.Body.String(), "20")
@@ -49,7 +49,7 @@ func TestGETPlayers(t *testing.T) {
 		request := newGetScoreRequest("Floyd")
 		response := httptest.NewRecorder()
 
-		server.ServeHTTP(response, request)
+		playerServer.ServeHTTP(response, request)
 
 		tests.AssertStatus(t, response, http.StatusOK)
 		tests.AssertResponseBody(t, response.Body.String(), "10")
@@ -66,12 +66,12 @@ func TestLeague(t *testing.T) {
 		}
 
 		store := tests.StubPlayerStore{League: wantedLeague}
-		server := mustMakePlayerServer(t, &store, tests.DummyGame)
+		playerServer := mustMakePlayerServer(t, &store, tests.DummyGame)
 
 		request := newLeagueRequest()
 		response := httptest.NewRecorder()
 
-		server.ServeHTTP(response, request)
+		playerServer.ServeHTTP(response, request)
 
 		got := getLeagueFromResponse(t, response.Body)
 
@@ -87,7 +87,7 @@ func TestStoreWins(t *testing.T) {
 		Scores: map[string]int{},
 	}
 
-	server := mustMakePlayerServer(t, &store, tests.DummyGame)
+	playerServer := mustMakePlayerServer(t, &store, tests.DummyGame)
 
 	t.Run("it returns accepted on POST", func(t *testing.T) {
 		player := "Pepper"
@@ -95,7 +95,7 @@ func TestStoreWins(t *testing.T) {
 		request := newPostWinRequest(player)
 		response := httptest.NewRecorder()
 
-		server.ServeHTTP(response, request)
+		playerServer.ServeHTTP(response, request)
 
 		tests.AssertStatus(t, response, http.StatusAccepted)
 
@@ -106,12 +106,12 @@ func TestStoreWins(t *testing.T) {
 func TestGame(t *testing.T) {
 	t.Run("Get /game returns 200", func(t *testing.T) {
 		game := &tests.GameSpy{}
-		server := mustMakePlayerServer(t, &tests.StubPlayerStore{}, game)
+		playerServer := mustMakePlayerServer(t, &tests.StubPlayerStore{}, game)
 
 		request := newGameRequest()
 		response := httptest.NewRecorder()
 
-		server.ServeHTTP(response, request)
+		playerServer.ServeHTTP(response, request)
 
 		tests.AssertStatus(t, response, http.StatusOK)
 	})
@@ -121,10 +121,10 @@ func TestGame(t *testing.T) {
 		winner := "Ruth"
 
 		game := &tests.GameSpy{BlindAlert: []byte(wantedBlindAlert)}
-		server := httptest.NewServer(mustMakePlayerServer(t, tests.DummyPlayerStore, game))
-		defer server.Close()
+		testServer := httptest.NewServer(mustMakePlayerServer(t, tests.DummyPlayerStore, game))
+		defer testServer.Close()
 
-		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+		wsURL := "ws" + strings.TrimPrefix(testServer.URL, "http") + "/ws"
 		ws := mustDialWS(t, wsURL)
 		closeWrapper := func() {
 			if err := ws.Close(); err != nil {
@@ -188,13 +188,13 @@ func writeMessage(t *testing.T, conn *websocket.Conn, message string) {
 }
 
 func mustMakePlayerServer(t *testing.T, store engine.PlayerStore, game engine.Game) *server.PlayerServer {
-	server, err := server.NewPlayerServer(store, game)
+	playerServer, err := server.NewPlayerServer(store, game)
 
 	if err != nil {
 		t.Fatal("problem creating player server", err)
 	}
 
-	return server
+	return playerServer
 }
 
 func mustDialWS(t *testing.T, url string) *websocket.Conn {
@@ -209,7 +209,7 @@ func mustDialWS(t *testing.T, url string) *websocket.Conn {
 }
 
 func newGetScoreRequest(name string) *http.Request {
-	request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("/players/%s", name), nil)
+	request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("/players/%s", name), http.NoBody)
 
 	if err != nil {
 		fmt.Printf("did not expect error in get score %v", err)
@@ -219,7 +219,7 @@ func newGetScoreRequest(name string) *http.Request {
 }
 
 func newGameRequest() *http.Request {
-	request, err := http.NewRequest(http.MethodGet, "/game", nil)
+	request, err := http.NewRequest(http.MethodGet, "/game", http.NoBody)
 
 	if err != nil {
 		fmt.Printf("did not expect error in get game %v", err)
@@ -229,7 +229,7 @@ func newGameRequest() *http.Request {
 }
 
 func newPostWinRequest(name string) *http.Request {
-	request, err := http.NewRequest(http.MethodPost, fmt.Sprintf("/players/%s", name), nil)
+	request, err := http.NewRequest(http.MethodPost, fmt.Sprintf("/players/%s", name), http.NoBody)
 
 	if err != nil {
 		fmt.Printf("did not expect error in post win %v", err)
@@ -239,7 +239,7 @@ func newPostWinRequest(name string) *http.Request {
 }
 
 func newLeagueRequest() *http.Request {
-	request, err := http.NewRequest(http.MethodGet, "/league", nil)
+	request, err := http.NewRequest(http.MethodGet, "/league", http.NoBody)
 
 	if err != nil {
 		fmt.Printf("did not expect error in get league %v", err)

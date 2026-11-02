@@ -25,6 +25,6 @@ func main() {
 	fmt.Println("Type {Name} wins to record a win")
 	game := texasholdem.NewTexasHoldem(store, engine.BlindAlerterFunc(engine.Alerter))
 
-	cli := cli.NewCLI(os.Stdin, os.Stdout, game)
-	cli.PlayPoker()
+	gameCLI := cli.NewCLI(os.Stdin, os.Stdout, game)
+	gameCLI.PlayPoker()
 }

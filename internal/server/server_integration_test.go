@@ -19,7 +19,7 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 	store, err := filesystem.NewPlayerStore(database)
 	tests.AssertNoError(t, err)
 
-	server, _ := server.NewPlayerServer(store, tests.DummyGame)
+	playerServer, _ := server.NewPlayerServer(store, tests.DummyGame)
 
 	player := "Pepper"
 
@@ -30,7 +30,7 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 	for range wantedCount {
 		go func() {
 			defer wg.Done()
-			server.ServeHTTP(httptest.NewRecorder(), newPostWinRequest(player))
+			playerServer.ServeHTTP(httptest.NewRecorder(), newPostWinRequest(player))
 		}()
 	}
 
@@ -38,7 +38,7 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 
 	t.Run("get score", func(t *testing.T) {
 		response := httptest.NewRecorder()
-		server.ServeHTTP(response, newGetScoreRequest(player))
+		playerServer.ServeHTTP(response, newGetScoreRequest(player))
 
 		tests.AssertStatus(t, response, http.StatusOK)
 		tests.AssertResponseBody(t, response.Body.String(), "1000")
@@ -46,7 +46,7 @@ func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 
 	t.Run("get league", func(t *testing.T) {
 		response := httptest.NewRecorder()
-		server.ServeHTTP(response, newLeagueRequest())
+		playerServer.ServeHTTP(response, newLeagueRequest())
 		tests.AssertStatus(t, response, http.StatusOK)
 
 		got := getLeagueFromResponse(t, response.Body)

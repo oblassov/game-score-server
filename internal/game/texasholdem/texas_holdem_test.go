@@ -1,7 +1,6 @@
 package texasholdem_test
 
 import (
-	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -64,7 +63,7 @@ func checkSchedulingCases(cases []tests.ScheduledAlert, t *testing.T, blindAlert
 	t.Helper()
 
 	for i, want := range cases {
-		t.Run(fmt.Sprint(want), func(t *testing.T) {
+		t.Run(want.String(), func(t *testing.T) {
 
 			if len(blindAlerter.Alerts) <= i {
 				t.Fatalf("alert %d was not scheduled %v", i, blindAlerter.Alerts)

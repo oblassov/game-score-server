@@ -28,7 +28,7 @@ func main() {
 		return
 	}
 
-	server := &http.Server{
+	srv := &http.Server{
 		Addr:         "5000",
 		Handler:      playerServer.Handler,
 		ReadTimeout:  5 * time.Second,
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	log.Println("Starting a server on localhost:5000")
-	if err := server.ListenAndServe(); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Printf("could not listen on port 5000 %v", err)
 		return
 	}

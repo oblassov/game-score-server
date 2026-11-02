@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"log"
 	"net/http"
@@ -68,7 +69,7 @@ func (p *PlayerServer) pageHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (p *PlayerServer) leagueHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("content-type", JSONContentType)
+	w.Header().Set("Content-Type", JSONContentType)
 	if err := json.NewEncoder(w).Encode(p.store.GetLeague()); err != nil {
 		log.Println("couldn't encode the json: ", err)
 	}
@@ -114,7 +115,9 @@ func (p *PlayerServer) showScore(w http.ResponseWriter, player string) {
 		w.WriteHeader(http.StatusNotFound)
 	}
 
-	if _, err := fmt.Fprint(w, score); err != nil {
+	safescore := html.EscapeString(strconv.Itoa(score))
+
+	if _, err := fmt.Fprint(w, safescore); err != nil {
 		log.Println("couldn't print the score: ", err)
 	}
 }
