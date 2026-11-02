@@ -14,6 +14,8 @@ func TestExtractWinnerTable(t *testing.T) {
 		{name: "extra space before wins is trimmed", input: "Chris  wins", want: "Chris"},
 		{name: "leading spaces are trimmed", input: "  Chris wins", want: "Chris"},
 		{name: "leading tab and extra spaces are trimmed", input: "\t Chris Smith  wins", want: "Chris Smith"},
+		{name: "trailing space is trimmed", input: "Chris wins ", want: "Chris"},
+		{name: "trailing tab and spaces are trimmed", input: "Chris Smith wins\t  ", want: "Chris Smith"},
 		{name: "whitespace-only name", input: "   wins", wantErr: true},
 		{name: "bare wins", input: "wins", wantErr: true},
 		{name: "wins with empty name", input: " wins", wantErr: true},
