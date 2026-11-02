@@ -24,6 +24,9 @@ func (i *PlayerStore) RecordWin(name string) {
 }
 
 func (i *PlayerStore) GetLeague() engine.League {
+	i.lock.RLock()
+	defer i.lock.RUnlock()
+
 	var league []engine.Player
 
 	for name, wins := range i.store {
