@@ -35,7 +35,7 @@ func (cli *CLI) PlayPoker() {
 		log.Println("couldn't print the player number prompt: ", err)
 	}
 	numberOfPlayers, err := strconv.Atoi(cli.readLine())
-	if err != nil {
+	if err != nil || numberOfPlayers < engine.MinPlayers || numberOfPlayers > engine.MaxPlayers {
 		if _, err = fmt.Fprint(cli.out, BadPlayerInputErrMsg); err != nil {
 			log.Println("couldn't print the bad number of players prompt: ", err)
 		}

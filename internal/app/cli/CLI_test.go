@@ -25,6 +25,39 @@ func TestCLI(t *testing.T) {
 		assertGameNotStarted(t, game)
 	})
 
+	for _, count := range []string{"0", "-1", "-100", "101", "1000000", "9223372036854775807"} {
+		t.Run("it rejects the out of range player count "+count+" and does not start the game", func(t *testing.T) {
+			stdOut := &bytes.Buffer{}
+			in := userSends(count, "Chris wins")
+			game := &tests.GameSpy{}
+
+			cliApp := cli.NewCLI(in, stdOut, game)
+			cliApp.PlayPoker()
+
+			assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg)
+			assertGameNotStarted(t, game)
+			assertGameNotFinished(t, game)
+		})
+	}
+
+	for _, count := range []struct {
+		input string
+		want  int
+	}{{"1", 1}, {"100", 100}} {
+		t.Run("it accepts the boundary player count "+count.input, func(t *testing.T) {
+			stdOut := &bytes.Buffer{}
+			in := userSends(count.input, "Chris wins")
+			game := &tests.GameSpy{}
+
+			cliApp := cli.NewCLI(in, stdOut, game)
+			cliApp.PlayPoker()
+
+			assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt)
+			assertGameStartedWith(t, game, count.want)
+			assertFinishCalledWith(t, game, "Chris")
+		})
+	}
+
 	t.Run("start game with 3 players and finish game with Chris as a winner", func(t *testing.T) {
 		in := userSends("3", "Chris wins")
 		stdOut := &bytes.Buffer{}
