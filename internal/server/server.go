@@ -117,11 +117,13 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	numberOfPlayers, err := strconv.Atoi(numberOfPlayersMsg)
 	if err != nil {
 		log.Println("couldn't convert the numberOfPlayers: ", err)
+		ws.closeWithReason(websocket.CloseUnsupportedData, engine.BadPlayerInputErrMsg)
 		return
 	}
 
 	if numberOfPlayers < engine.MinPlayers || numberOfPlayers > engine.MaxPlayers {
 		log.Printf("numberOfPlayers %d out of range [%d, %d]", numberOfPlayers, engine.MinPlayers, engine.MaxPlayers)
+		ws.closeWithReason(websocket.CloseUnsupportedData, engine.BadPlayerInputErrMsg)
 		return
 	}
 

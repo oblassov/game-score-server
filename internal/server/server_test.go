@@ -397,6 +397,39 @@ func TestWebSocketRejectsInvalidPlayerCount(t *testing.T) {
 	}
 }
 
+func TestWebSocketInvalidPlayerCountSendsCloseReason(t *testing.T) {
+	for _, count := range []string{"abc", "", "0", "101"} {
+		t.Run(fmt.Sprintf("count %q", count), func(t *testing.T) {
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, &startRecorderGame{}))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			writeMessage(t, ws, count)
+
+			if err := ws.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+				t.Fatalf("could not set read deadline: %v", err)
+			}
+
+			_, _, err := ws.ReadMessage()
+
+			var closeErr *websocket.CloseError
+			if !errors.As(err, &closeErr) {
+				t.Fatalf("expected a websocket close frame, got %v", err)
+			}
+
+			if closeErr.Code != websocket.CloseUnsupportedData {
+				t.Errorf("close code = %d, want %d", closeErr.Code, websocket.CloseUnsupportedData)
+			}
+
+			if closeErr.Text != engine.BadPlayerInputErrMsg {
+				t.Errorf("close reason = %q, want %q", closeErr.Text, engine.BadPlayerInputErrMsg)
+			}
+		})
+	}
+}
+
 type finishSignalGame struct {
 	finished chan string
 }

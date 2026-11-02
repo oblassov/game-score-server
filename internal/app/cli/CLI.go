@@ -13,7 +13,7 @@ import (
 )
 
 const PlayerPrompt = "Please enter the number of players: "
-const BadPlayerInputErrMsg = "bad value received for number of players, please try again with a number"
+const BadPlayerInputErrMsg = engine.BadPlayerInputErrMsg
 const BadWinnerInputErrMsg = "bad value received for winner, please try using '%NAME% wins'"
 
 type CLI struct {

@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+const closeWriteTimeout = time.Second
 
 type playerServerWS struct {
 	*websocket.Conn
@@ -43,6 +46,16 @@ func (w *playerServerWS) Close() error {
 	w.closed.Store(true)
 
 	return w.Conn.Close()
+}
+
+// closeWithReason sends a close frame with the given code and reason so the
+// client sees why the connection ended instead of an abnormal closure.
+// WriteControl is safe to call concurrently with other writes.
+func (w *playerServerWS) closeWithReason(code int, reason string) {
+	msg := websocket.FormatCloseMessage(code, reason)
+	if err := w.WriteControl(websocket.CloseMessage, msg, time.Now().Add(closeWriteTimeout)); err != nil {
+		log.Println("couldn't send the websocket close frame: ", err)
+	}
 }
 
 // Write sends p as a text message. Once the wrapper is closed the game is
