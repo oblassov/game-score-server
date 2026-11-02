@@ -65,7 +65,7 @@ func (cli *CLI) readLine() string {
 func extractWinner(userInput string) (string, error) {
 
 	if !strings.Contains(userInput, "wins") {
-		return "", errors.New(BadPlayerInputErrMsg)
+		return "", errors.New(BadWinnerInputErrMsg)
 	}
 
 	return strings.Replace(userInput, " wins", "", 1), nil
