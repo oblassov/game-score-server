@@ -29,7 +29,7 @@ func NewLeague(reader io.Reader) (League, error) {
 	err := json.NewDecoder(reader).Decode(&league)
 
 	if err != nil {
-		err = fmt.Errorf("problem parsing a league, %v", err)
+		err = fmt.Errorf("problem parsing a league: %w", err)
 	}
 
 	return league, err

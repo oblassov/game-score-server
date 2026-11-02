@@ -45,13 +45,13 @@ func NewPlayerStore(file *os.File) (*PlayerStore, error) {
 	err := initializePlayerDBFile(file)
 
 	if err != nil {
-		return nil, fmt.Errorf("problem initializing player db file %v", err)
+		return nil, fmt.Errorf("problem initializing player db file: %w", err)
 	}
 
 	league, err := engine.NewLeague(file)
 
 	if err != nil {
-		return nil, fmt.Errorf("problem loading player store from file %s, %v", file.Name(), err)
+		return nil, fmt.Errorf("problem loading player store from file %s: %w", file.Name(), err)
 	}
 
 	return &PlayerStore{
