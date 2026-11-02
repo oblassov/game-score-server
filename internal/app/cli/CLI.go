@@ -46,7 +46,8 @@ func (cli *CLI) PlayPoker() error {
 		return nil
 	}
 
-	cli.game.Start(numberOfPlayers, cli.out)
+	stop := cli.game.Start(numberOfPlayers, cli.out)
+	defer stop()
 
 	winnerInput, err := cli.readLine()
 	if err != nil {

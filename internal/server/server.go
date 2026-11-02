@@ -127,7 +127,8 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.game.Start(numberOfPlayers, ws)
+	stop := p.game.Start(numberOfPlayers, ws)
+	defer stop()
 
 	rawWinner, err := ws.WaitForMsg()
 	if err != nil {

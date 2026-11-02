@@ -328,10 +328,12 @@ type outputCapturingGame struct {
 	out io.Writer
 }
 
-func (g *outputCapturingGame) Start(_ int, out io.Writer) {
+func (g *outputCapturingGame) Start(_ int, out io.Writer) (stop func()) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.out = out
+
+	return func() {}
 }
 
 func (g *outputCapturingGame) Finish(string) {}
@@ -369,7 +371,11 @@ type startRecorderGame struct {
 	started atomic.Bool
 }
 
-func (g *startRecorderGame) Start(_ int, _ io.Writer) { g.started.Store(true) }
+func (g *startRecorderGame) Start(_ int, _ io.Writer) (stop func()) {
+	g.started.Store(true)
+
+	return func() {}
+}
 
 func (g *startRecorderGame) Finish(_ string) {}
 
@@ -434,9 +440,61 @@ type finishSignalGame struct {
 	finished chan string
 }
 
-func (g *finishSignalGame) Start(_ int, _ io.Writer) {}
+func (g *finishSignalGame) Start(_ int, _ io.Writer) (stop func()) { return func() {} }
 
 func (g *finishSignalGame) Finish(winner string) { g.finished <- winner }
+
+type stopSignalGame struct {
+	stopped chan struct{}
+}
+
+func (g *stopSignalGame) Start(_ int, _ io.Writer) (stop func()) {
+	return func() { close(g.stopped) }
+}
+
+func (g *stopSignalGame) Finish(string) {}
+
+func TestWebSocketStopsGameAlertsWhenHandlerReturns(t *testing.T) {
+	cases := map[string]func(t *testing.T, ws *websocket.Conn){
+		"client disconnects before naming a winner": func(t *testing.T, ws *websocket.Conn) {
+			t.Helper()
+
+			if err := ws.Close(); err != nil {
+				t.Fatalf("could not close the client websocket: %v", err)
+			}
+		},
+		"client sends a blank winner": func(t *testing.T, ws *websocket.Conn) {
+			t.Helper()
+
+			writeMessage(t, ws, "  ")
+		},
+		"game finishes normally": func(t *testing.T, ws *websocket.Conn) {
+			t.Helper()
+
+			writeMessage(t, ws, "Ruth")
+		},
+	}
+
+	for name, act := range cases {
+		t.Run(name, func(t *testing.T) {
+			game := &stopSignalGame{stopped: make(chan struct{})}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			writeMessage(t, ws, "3")
+			act(t, ws)
+
+			select {
+			case <-game.stopped:
+			case <-time.After(2 * time.Second):
+				t.Error("the stop func returned by Start was not called after the handler returned")
+			}
+		})
+	}
+}
 
 func TestWebSocketClientDisconnectBeforeWinnerDoesNotFinishGame(t *testing.T) {
 	game := &finishSignalGame{finished: make(chan string, 1)}

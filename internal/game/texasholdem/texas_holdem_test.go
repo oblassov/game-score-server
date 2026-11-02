@@ -50,6 +50,23 @@ func TestGame_Start(t *testing.T) {
 	})
 }
 
+func TestGame_StartReturnsStopThatCancelsAllAlerts(t *testing.T) {
+	blindAlerter := &tests.SpyBlindAlerter{}
+	game := texasholdem.NewTexasHoldem(tests.DummyPlayerStore, blindAlerter)
+
+	stop := game.Start(5, io.Discard)
+
+	if blindAlerter.Cancelled != 0 {
+		t.Fatalf("%d alerts cancelled before stop was called, want 0", blindAlerter.Cancelled)
+	}
+
+	stop()
+
+	if got, want := blindAlerter.Cancelled, len(blindAlerter.Alerts); got != want {
+		t.Errorf("stop cancelled %d alerts, want all %d scheduled", got, want)
+	}
+}
+
 func TestGame_Finish(t *testing.T) {
 	playerStore := &tests.StubPlayerStore{}
 	game := texasholdem.NewTexasHoldem(playerStore, tests.DummyBlindAlerter)

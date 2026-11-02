@@ -77,11 +77,14 @@ func (s ScheduledAlert) String() string {
 }
 
 type SpyBlindAlerter struct {
-	Alerts []ScheduledAlert
+	Alerts    []ScheduledAlert
+	Cancelled int
 }
 
-func (s *SpyBlindAlerter) ScheduleAlertAt(at time.Duration, amount int, _ io.Writer) {
+func (s *SpyBlindAlerter) ScheduleAlertAt(at time.Duration, amount int, _ io.Writer) (cancel func()) {
 	s.Alerts = append(s.Alerts, ScheduledAlert{at, amount})
+
+	return func() { s.Cancelled++ }
 }
 
 type GameSpy struct {
@@ -93,7 +96,7 @@ type GameSpy struct {
 	FinishedWith string
 }
 
-func (g *GameSpy) Start(numberOfPlayers int, out io.Writer) {
+func (g *GameSpy) Start(numberOfPlayers int, out io.Writer) (stop func()) {
 	g.mu.Lock()
 	g.StartCalled = true
 	g.StartedWith = numberOfPlayers
@@ -103,6 +106,8 @@ func (g *GameSpy) Start(numberOfPlayers int, out io.Writer) {
 	if _, err := out.Write(blindAlert); err != nil {
 		log.Println("couldn't write an alert: ", err)
 	}
+
+	return func() {}
 }
 
 func (g *GameSpy) Finish(winner string) {

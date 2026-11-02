@@ -13,6 +13,8 @@ const (
 const BadPlayerInputErrMsg = "bad value received for number of players, please try again with a number"
 
 type Game interface {
-	Start(numberOfPlayers int, alertDestination io.Writer)
+	// Start begins the game and returns a non-nil stop func that cancels any
+	// pending blind alerts. Callers may call stop more than once.
+	Start(numberOfPlayers int, alertDestination io.Writer) (stop func())
 	Finish(winner string)
 }
