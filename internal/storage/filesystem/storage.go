@@ -178,7 +178,11 @@ func (f *PlayerStore) currentLeague() engine.League {
 		league = f.league
 	}
 
-	return append(engine.League(nil), league...)
+	// Non-nil even when empty, so the league encodes as [] rather than null.
+	snapshot := make(engine.League, len(league))
+	copy(snapshot, league)
+
+	return snapshot
 }
 
 // readLeagueShared reads the db while holding the sidecar flock in shared mode.

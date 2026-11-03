@@ -92,7 +92,8 @@ func (p *PlayerServer) playersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *PlayerServer) playGame(w http.ResponseWriter, _ *http.Request) {
-	if err := p.template.Execute(w, nil); err != nil {
+	data := struct{ Min, Max int }{Min: engine.MinPlayers, Max: engine.MaxPlayers}
+	if err := p.template.Execute(w, data); err != nil {
 		log.Println("couldn't execute the template: ", err)
 	}
 }

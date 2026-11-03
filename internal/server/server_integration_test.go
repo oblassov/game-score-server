@@ -12,6 +12,37 @@ import (
 	"github.com/oblassov/game-score-server/tests"
 )
 
+func TestGETLeagueWithNoPlayers(t *testing.T) {
+	cases := []struct {
+		name string
+		seed string
+	}{
+		{name: "empty league", seed: `[]`},
+		{name: "empty file", seed: ``},
+		{name: "whitespace only file", seed: "  \n"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			database, cleanDatabase := tests.CreateTempFile(t, tc.seed)
+			defer cleanDatabase()
+
+			store, err := filesystem.NewPlayerStore(database)
+			tests.AssertNoError(t, err)
+
+			playerServer, _ := server.NewPlayerServer(store, tests.DummyGame)
+			want := readAPIContract(t, "league-empty.json")
+
+			response := httptest.NewRecorder()
+			playerServer.ServeHTTP(response, newLeagueRequest())
+
+			tests.AssertStatus(t, response, want.Status)
+			tests.AssertContentType(t, response, "application/json")
+			tests.AssertResponseBody(t, response.Body.String(), want.Body)
+		})
+	}
+}
+
 func TestRecordingWinsAndRetrievingThem(t *testing.T) {
 	database, cleanDatabase := tests.CreateTempFile(t, `[]`)
 	defer cleanDatabase()

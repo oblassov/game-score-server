@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -237,6 +238,37 @@ func TestGame(t *testing.T) {
 	})
 }
 
+func TestGamePagePlayerCountBounds(t *testing.T) {
+	playerServer := mustMakePlayerServer(t, &tests.StubPlayerStore{}, &tests.GameSpy{})
+
+	response := httptest.NewRecorder()
+	playerServer.ServeHTTP(response, newGameRequest())
+
+	tests.AssertStatus(t, response, http.StatusOK)
+
+	body := response.Body.String()
+	inputTag := regexp.MustCompile(`<input[^>]*id="player-count"[^>]*>`).FindString(body)
+	if inputTag == "" {
+		t.Fatalf("no <input> tag with id=%q found in body %q", "player-count", body)
+	}
+
+	cases := []struct {
+		name string
+		want string
+	}{
+		{name: "min attribute", want: fmt.Sprintf(`min="%d"`, engine.MinPlayers)},
+		{name: "max attribute", want: fmt.Sprintf(`max="%d"`, engine.MaxPlayers)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !strings.Contains(inputTag, tc.want) {
+				t.Errorf("player-count input %q does not contain %s", inputTag, tc.want)
+			}
+		})
+	}
+}
+
 func retryUntil(d time.Duration, f func() bool) bool {
 	deadline := time.Now().Add(d)
 
@@ -380,7 +412,7 @@ func TestWebSocketRejectsNonUpgradeRequest(t *testing.T) {
 }
 
 func TestWebSocketAcceptsBoundaryPlayerCount(t *testing.T) {
-	for _, count := range []int{1, 100} {
+	for _, count := range []int{2, 22} {
 		t.Run(fmt.Sprintf("count %d", count), func(t *testing.T) {
 			game := &tests.GameSpy{}
 			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
@@ -470,7 +502,7 @@ func (g *startRecorderGame) Finish(_ string) {}
 func TestWebSocketRejectsInvalidPlayerCount(t *testing.T) {
 	for _, count := range []string{
 		"abc", "", "3 players",
-		"0", "-1", "-5", "-100", "101", "1000000", "9223372036854775807",
+		"0", "1", "-1", "-5", "-100", "23", "100", "101", "1000000", "9223372036854775807",
 	} {
 		t.Run(fmt.Sprintf("count %q", count), func(t *testing.T) {
 			game := &startRecorderGame{}
@@ -492,7 +524,7 @@ func TestWebSocketRejectsInvalidPlayerCount(t *testing.T) {
 }
 
 func TestWebSocketInvalidPlayerCountSendsCloseReason(t *testing.T) {
-	for _, count := range []string{"abc", "", "0", "101"} {
+	for _, count := range []string{"abc", "", "0", "1", "23", "101"} {
 		t.Run(fmt.Sprintf("count %q", count), func(t *testing.T) {
 			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, &startRecorderGame{}))
 			defer testServer.Close()

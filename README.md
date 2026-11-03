@@ -6,7 +6,7 @@ A Texas Hold'em poker tournament game manager and player score tracking service 
 
 ## Features
 
-- **Texas Hold'em Game Engine**: Schedules progressive blind alerts (`Blind is now <amount>`) with intervals dynamically calculated based on player count: `(5 + numberOfPlayers) * time.Minute`.
+- **Texas Hold'em Game Engine**: Games take 2 to 22 players (a 52-card deck deals hold'em to at most 22). Schedules progressive blind alerts (`Blind is now <amount>`) with intervals dynamically calculated based on player count: `(5 + numberOfPlayers) * time.Minute`.
 - **Real-Time WebSockets**: Live blind alerts streamed to the browser UI via WebSocket connections.
 - **RESTful Player & League API**: Query individual player scores, register wins, and retrieve the current league standings sorted by wins.
 - **Interactive Browser UI**: Embedded single-page web interface (`/game`) for starting games, viewing blind alerts in real time, and declaring winners.
@@ -84,6 +84,9 @@ go run ./cmd/cli
 
 It uses the same `game.db.json` in the current working directory (or `GAME_DB_PATH`).
 
+The number of players must be 2 to 22. Any other input prints
+`bad value received for number of players, please try again with a number from 2 to 22` and exits without starting a game.
+
 Example session:
 ```text
 Let's play poker
@@ -121,7 +124,7 @@ Alice wins
 ### WebSocket Protocol (`/ws`)
 
 1. **Client connects** to `ws://localhost:5000/ws`.
-2. **Client sends** number of players (e.g. `"5"`).
+2. **Client sends** number of players, 2 to 22 (e.g. `"5"`). Anything else closes the connection with code 1003 (unsupported data) and the reason `bad value received for number of players, please try again with a number from 2 to 22`.
 3. **Server streams** blind alerts over time (e.g. `"Blind is now 100"`, `"Blind is now 200"`).
 4. **Client sends** the winner's name (e.g. `"Ruth"`).
 5. **Server records** the win and finalizes the game.

@@ -32,7 +32,7 @@ var (
 	// winnerReadTimeout bounds waiting for the winner message. It must
 	// outlast the longest possible game: the blind schedule has 11 blinds
 	// (the last fires at 10*(5+n) minutes for n players), which is about
-	// 17.5 hours for engine.MaxPlayers (100) players. 24h leaves margin.
+	// 4.5 hours for engine.MaxPlayers (22) players. 24h leaves margin.
 	winnerReadTimeout = 24 * time.Hour
 	// maxMessageSize is the largest inbound message, in bytes.
 	maxMessageSize int64 = 1024

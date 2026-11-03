@@ -26,7 +26,7 @@ func TestCLI(t *testing.T) {
 		assertGameNotStarted(t, game)
 	})
 
-	for _, count := range []string{"0", "-1", "-100", "101", "1000000", "9223372036854775807"} {
+	for _, count := range []string{"0", "1", "-1", "-100", "23", "100", "101", "1000000", "9223372036854775807"} {
 		t.Run("it rejects the out of range player count "+count+" and does not start the game", func(t *testing.T) {
 			stdOut := &bytes.Buffer{}
 			in := userSends(count, "Chris wins")
@@ -44,7 +44,7 @@ func TestCLI(t *testing.T) {
 	for _, count := range []struct {
 		input string
 		want  int
-	}{{"1", 1}, {"100", 100}} {
+	}{{"2", 2}, {"22", 22}} {
 		t.Run("it accepts the boundary player count "+count.input, func(t *testing.T) {
 			stdOut := &bytes.Buffer{}
 			in := userSends(count.input, "Chris wins")

@@ -98,7 +98,7 @@
 		<div id="game-start">
 			<h1>Welcome to Poker!</h1>
 			<label for="player-count">Enter Number of Players:</label>
-			<input type="number" id="player-count" placeholder="Enter a number" />
+			<input type="number" id="player-count" min="{{.Min}}" max="{{.Max}}" placeholder="Enter a number" />
 			<button id="start-game">Start Game</button>
 		</div>
 
