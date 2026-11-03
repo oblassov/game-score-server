@@ -40,7 +40,7 @@ func (cli *CLI) PlayPoker() error {
 	if err != nil {
 		return fmt.Errorf("couldn't read the number of players: %w", err)
 	}
-	numberOfPlayers, err := strconv.Atoi(playersInput)
+	numberOfPlayers, err := strconv.Atoi(strings.TrimSpace(playersInput))
 	if err != nil || numberOfPlayers < engine.MinPlayers || numberOfPlayers > engine.MaxPlayers {
 		if _, err = fmt.Fprint(cli.out, BadPlayerInputErrMsg); err != nil {
 			log.Println("couldn't print the bad number of players prompt: ", err)
@@ -79,6 +79,10 @@ func (cli *CLI) readLine() (string, error) {
 
 func extractWinner(userInput string) (string, error) {
 	const suffix = "wins"
+
+	if !utf8.ValidString(userInput) {
+		return "", errors.New(BadWinnerInputErrMsg)
+	}
 
 	head, ok := strings.CutSuffix(strings.TrimRightFunc(userInput, unicode.IsSpace), suffix)
 	if last, _ := utf8.DecodeLastRuneInString(head); !ok || !unicode.IsSpace(last) {

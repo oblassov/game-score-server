@@ -99,6 +99,45 @@ func TestCLI(t *testing.T) {
 
 }
 
+func TestCLIPlayerCountTrimsWhitespace(t *testing.T) {
+	for name, sent := range map[string]string{
+		"trailing space":    "4 ",
+		"leading space":     " 4",
+		"tabs":              "\t4\t",
+		"carriage return":   "4\r",
+		"spaces both sides": "  4  ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			stdOut := &bytes.Buffer{}
+			game := &tests.GameSpy{}
+
+			cli.NewCLI(userSends(sent, "Chris wins"), stdOut, game).PlayPoker()
+
+			assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt)
+			assertGameStartedWith(t, game, 4)
+			assertFinishCalledWith(t, game, "Chris")
+		})
+	}
+}
+
+func TestCLIRejectsInvalidUTF8Winner(t *testing.T) {
+	for name, sent := range map[string]string{
+		"only an invalid byte":          "\xff wins",
+		"invalid byte inside the name":  "Al\xffice wins",
+		"truncated multibyte character": "Al\xe2\x82 wins",
+	} {
+		t.Run(name, func(t *testing.T) {
+			stdOut := &bytes.Buffer{}
+			game := &tests.GameSpy{}
+
+			cli.NewCLI(userSends("3", sent), stdOut, game).PlayPoker()
+
+			assertGameNotFinished(t, game)
+			assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadWinnerInputErrMsg)
+		})
+	}
+}
+
 func assertFinishCalledWith(t testing.TB, game *tests.GameSpy, winner string) {
 	t.Helper()
 

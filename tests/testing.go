@@ -59,8 +59,9 @@ func (s *StubPlayerStore) GetPlayerScore(name string) int {
 	return score
 }
 
-func (s *StubPlayerStore) RecordWin(name string) {
+func (s *StubPlayerStore) RecordWin(name string) error {
 	s.WinCalls = append(s.WinCalls, name)
+	return nil
 }
 
 func (s *StubPlayerStore) GetLeague() engine.League {

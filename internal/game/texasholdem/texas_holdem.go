@@ -2,6 +2,7 @@ package texasholdem
 
 import (
 	"io"
+	"log"
 	"time"
 
 	"github.com/oblassov/game-score-server/internal/engine"
@@ -40,5 +41,7 @@ func (p *TexasHoldem) Start(numberOfPlayers int, alertsDestination io.Writer) (s
 }
 
 func (p *TexasHoldem) Finish(winner string) {
-	p.store.RecordWin(winner)
+	if err := p.store.RecordWin(winner); err != nil {
+		log.Printf("couldn't record the win: %v", err)
+	}
 }

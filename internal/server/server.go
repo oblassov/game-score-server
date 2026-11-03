@@ -115,7 +115,7 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	numberOfPlayers, err := strconv.Atoi(numberOfPlayersMsg)
+	numberOfPlayers, err := strconv.Atoi(strings.TrimSpace(numberOfPlayersMsg))
 	if err != nil {
 		log.Println("couldn't convert the numberOfPlayers: ", err)
 		ws.closeWithReason(websocket.CloseUnsupportedData, engine.BadPlayerInputErrMsg)
@@ -140,6 +140,11 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	winner := strings.TrimSpace(rawWinner)
 	if winner == "" {
 		log.Println("blank winner, not finishing the game")
+		return
+	}
+
+	if !utf8.ValidString(winner) {
+		log.Println("winner is not valid UTF-8, not finishing the game")
 		return
 	}
 
@@ -168,6 +173,11 @@ func (p *PlayerServer) processWin(w http.ResponseWriter, rawPlayer string) {
 		return
 	}
 
-	p.store.RecordWin(player)
+	if err := p.store.RecordWin(player); err != nil {
+		log.Printf("couldn't record the win: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusAccepted)
 }

@@ -628,6 +628,57 @@ func TestWebSocketBlankWinnerDoesNotFinishGame(t *testing.T) {
 	}
 }
 
+func TestWebSocketRejectsInvalidUTF8Winner(t *testing.T) {
+	for name, sent := range map[string]string{
+		"only an invalid byte":          "\xff",
+		"invalid byte inside the name":  "Al\xffice",
+		"truncated multibyte character": "Al\xe2\x82",
+	} {
+		t.Run(name, func(t *testing.T) {
+			game := &finishSignalGame{finished: make(chan string, 1)}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			writeMessage(t, ws, "3")
+			writeMessage(t, ws, sent)
+
+			select {
+			case winner := <-game.finished:
+				t.Errorf("Finish was called with %q for a winner name that is not valid UTF-8", winner)
+			case <-time.After(500 * time.Millisecond):
+			}
+		})
+	}
+}
+
+func TestWebSocketTrimsPlayerCount(t *testing.T) {
+	for name, sent := range map[string]string{
+		"trailing space":    "4 ",
+		"leading space":     " 4",
+		"tabs":              "\t4\t",
+		"newline":           "4\n",
+		"spaces both sides": "  4  ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			game := &tests.GameSpy{}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+			defer testServer.Close()
+
+			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+			defer func() { _ = ws.Close() }()
+
+			writeMessage(t, ws, sent)
+			writeMessage(t, ws, "Ruth")
+
+			assertServerClosesWS(t, ws)
+			assertGameStartedWith(t, game, 4)
+		})
+	}
+}
+
 func TestWebSocketTrimsWinnerName(t *testing.T) {
 	for name, sent := range map[string]string{
 		"surrounding spaces": " Alice ",

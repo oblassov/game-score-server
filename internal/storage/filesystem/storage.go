@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"sort"
 	"sync"
@@ -138,7 +137,7 @@ func (f *PlayerStore) GetPlayerScore(name string) int {
 	return 0
 }
 
-func (f *PlayerStore) RecordWin(name string) {
+func (f *PlayerStore) RecordWin(name string) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
@@ -146,8 +145,7 @@ func (f *PlayerStore) RecordWin(name string) {
 	// start from what is on disk rather than from the cached league.
 	league, err := f.readLeague()
 	if err != nil {
-		log.Printf("couldn't re-read the db: %v", err)
-		return
+		return fmt.Errorf("couldn't re-read the db: %w", err)
 	}
 
 	player := league.Find(name)
@@ -159,11 +157,12 @@ func (f *PlayerStore) RecordWin(name string) {
 	}
 
 	if err := f.database.Encode(league); err != nil {
-		log.Printf("couldn't encode the db: %v", err)
-		return
+		return fmt.Errorf("couldn't encode the db: %w", err)
 	}
 
 	f.league = league
+
+	return nil
 }
 
 func (f *PlayerStore) readLeague() (engine.League, error) {

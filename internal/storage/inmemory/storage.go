@@ -18,10 +18,11 @@ func (i *PlayerStore) GetPlayerScore(name string) int {
 	return i.store[name]
 }
 
-func (i *PlayerStore) RecordWin(name string) {
+func (i *PlayerStore) RecordWin(name string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
 	i.store[name]++
+	return nil
 }
 
 func (i *PlayerStore) GetLeague() engine.League {
