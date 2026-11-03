@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,35 +33,82 @@ func TestGETPlayers(t *testing.T) {
 
 	playerServer := mustMakePlayerServer(t, &store, tests.DummyGame)
 
-	t.Run("return 404 on missing players", func(t *testing.T) {
-		request := newGetScoreRequest("Apollo")
-		response := httptest.NewRecorder()
+	// GET must normalise the name the same way POST does (it trims), or a
+	// win recorded for " Pepper " is unreachable under the same URL.
+	cases := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantBody   string
+	}{
+		{name: "return 404 on missing players", path: "Apollo", wantStatus: http.StatusNotFound, wantBody: "0"},
+		{name: "returns Pepper's score", path: "Pepper", wantStatus: http.StatusOK, wantBody: "20"},
+		{name: "returns Floyd's score", path: "Floyd", wantStatus: http.StatusOK, wantBody: "10"},
+		{name: "trims spaces around the name", path: "%20Pepper%20", wantStatus: http.StatusOK, wantBody: "20"},
+		{name: "trims tabs and newlines around the name", path: "%09Floyd%0A", wantStatus: http.StatusOK, wantBody: "10"},
+		{name: "keeps inner spaces", path: "Pep%20per", wantStatus: http.StatusNotFound, wantBody: "0"},
+		{name: "blank name is a missing player", path: "%20%20", wantStatus: http.StatusNotFound, wantBody: "0"},
+		{name: "empty name is a missing player", path: "", wantStatus: http.StatusNotFound, wantBody: "0"},
+	}
 
-		playerServer.ServeHTTP(response, request)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
 
-		tests.AssertStatus(t, response, http.StatusNotFound)
-		tests.AssertResponseBody(t, response.Body.String(), "0")
-	})
+			playerServer.ServeHTTP(response, newGetScoreRequest(tc.path))
 
-	t.Run("returns Pepper's score", func(t *testing.T) {
-		request := newGetScoreRequest("Pepper")
-		response := httptest.NewRecorder()
+			tests.AssertStatus(t, response, tc.wantStatus)
+			tests.AssertResponseBody(t, response.Body.String(), tc.wantBody)
+		})
+	}
+}
 
-		playerServer.ServeHTTP(response, request)
+// apiContract is the status and body pinned in testdata/api/<endpoint>-<case>.json.
+type apiContract struct {
+	Status int    `json:"status"`
+	Body   string `json:"body"`
+}
 
-		tests.AssertStatus(t, response, http.StatusOK)
-		tests.AssertResponseBody(t, response.Body.String(), "20")
-	})
+func readAPIContract(t *testing.T, file string) apiContract {
+	t.Helper()
 
-	t.Run("returns Floyd's score", func(t *testing.T) {
-		request := newGetScoreRequest("Floyd")
-		response := httptest.NewRecorder()
+	data, err := os.ReadFile(filepath.Join("testdata", "api", file))
+	tests.AssertNoError(t, err)
 
-		playerServer.ServeHTTP(response, request)
+	var contract apiContract
+	if err := json.Unmarshal(data, &contract); err != nil {
+		t.Fatalf("couldn't parse contract %s: %v", file, err)
+	}
 
-		tests.AssertStatus(t, response, http.StatusOK)
-		tests.AssertResponseBody(t, response.Body.String(), "10")
-	})
+	return contract
+}
+
+func TestGETPlayersContract(t *testing.T) {
+	store := tests.StubPlayerStore{Scores: map[string]int{"Pepper": 20}}
+	playerServer := mustMakePlayerServer(t, &store, tests.DummyGame)
+
+	cases := []struct {
+		name string
+		path string
+		file string
+	}{
+		{name: "known player", path: "Pepper", file: "players-get-known.json"},
+		{name: "padded name", path: "%20Pepper%20", file: "players-get-padded-name.json"},
+		{name: "unknown player", path: "Apollo", file: "players-get-unknown.json"},
+		{name: "blank name", path: "%20", file: "players-get-blank-name.json"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := readAPIContract(t, tc.file)
+			response := httptest.NewRecorder()
+
+			playerServer.ServeHTTP(response, newGetScoreRequest(tc.path))
+
+			tests.AssertStatus(t, response, want.Status)
+			tests.AssertResponseBody(t, response.Body.String(), want.Body)
+		})
+	}
 }
 
 func TestLeague(t *testing.T) {

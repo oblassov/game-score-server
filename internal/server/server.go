@@ -137,7 +137,7 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	winner := strings.TrimSpace(rawWinner)
+	winner := engine.NormalizePlayerName(rawWinner)
 	if winner == "" {
 		log.Println("blank winner, not finishing the game")
 		return
@@ -151,8 +151,8 @@ func (p *PlayerServer) webSocket(w http.ResponseWriter, r *http.Request) {
 	p.game.Finish(winner)
 }
 
-func (p *PlayerServer) showScore(w http.ResponseWriter, player string) {
-	score := p.store.GetPlayerScore(player)
+func (p *PlayerServer) showScore(w http.ResponseWriter, rawPlayer string) {
+	score := p.store.GetPlayerScore(engine.NormalizePlayerName(rawPlayer))
 
 	if score == 0 {
 		w.WriteHeader(http.StatusNotFound)
@@ -166,7 +166,7 @@ func (p *PlayerServer) showScore(w http.ResponseWriter, player string) {
 }
 
 func (p *PlayerServer) processWin(w http.ResponseWriter, rawPlayer string) {
-	player := strings.TrimSpace(rawPlayer)
+	player := engine.NormalizePlayerName(rawPlayer)
 	if player == "" || !utf8.ValidString(player) {
 		log.Println("couldn't record the win: invalid player name")
 		w.WriteHeader(http.StatusBadRequest)

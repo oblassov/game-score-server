@@ -11,18 +11,10 @@ import (
 	"github.com/oblassov/game-score-server/internal/storage/filesystem"
 )
 
-const (
-	dbFileName = "game.db.json"
-	listenAddr = ":5000"
-)
+const listenAddr = ":5000"
 
 func main() {
-	dbPath, err := filesystem.PathNextToExecutable(dbFileName)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	store, closeStore, err := filesystem.PlayerStoreFromFile(dbPath)
+	store, closeStore, err := filesystem.PlayerStoreFromFile(filesystem.DBPathFromEnv())
 	if err != nil {
 		log.Fatal(err)
 	}

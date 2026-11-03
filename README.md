@@ -12,7 +12,7 @@ A Texas Hold'em poker tournament game manager and player score tracking service 
 - **Interactive Browser UI**: Embedded single-page web interface (`/game`) for starting games, viewing blind alerts in real time, and declaring winners.
 - **Interactive CLI Tool**: Terminal-based interface for running poker sessions locally and recording wins directly to the store.
 - **Thread-Safe Storage**:
-  - **Filesystem Store**: Persistent JSON storage (`game.db.json`) protected by `sync.RWMutex` with atomic rewrite mechanics.
+  - **Filesystem Store**: Persistent JSON storage (`game.db.json` in the current working directory, or the path in `GAME_DB_PATH`) protected by `sync.RWMutex` with atomic rewrite mechanics.
   - **In-Memory Store**: Fast, thread-safe in-memory player store for transient use and testing.
 
 ---
@@ -68,6 +68,8 @@ Start the web server on port `5000`:
 go run ./cmd/webserver
 ```
 
+The league is stored in `game.db.json` in the current working directory; set `GAME_DB_PATH` to use another file.
+
 Once started:
 - Open your browser at [http://localhost:5000/game](http://localhost:5000/game) to play a game with real-time blind alerts.
 - Check league standings at [http://localhost:5000/league](http://localhost:5000/league).
@@ -79,6 +81,8 @@ Start the interactive terminal game:
 ```bash
 go run ./cmd/cli
 ```
+
+It uses the same `game.db.json` in the current working directory (or `GAME_DB_PATH`).
 
 Example session:
 ```text

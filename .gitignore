@@ -1,2 +1,6 @@
-# Runtime league database, created next to the executable
+# Runtime league database and its sidecar lock, created in the working directory (or GAME_DB_PATH)
 game.db.json
+game.db.json.lock
+
+# Binaries built by make
+/bin/

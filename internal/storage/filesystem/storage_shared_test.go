@@ -4,8 +4,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
+	"github.com/oblassov/game-score-server/internal/engine"
 	"github.com/oblassov/game-score-server/tests"
 )
 
@@ -37,6 +39,59 @@ func TestRecordWinKeepsWinsRecordedByAnotherStore(t *testing.T) {
 
 	tests.AssertScoreEquals(t, reopened.GetPlayerScore("Alice"), 2)
 	tests.AssertScoreEquals(t, reopened.GetPlayerScore("Bob"), 1)
+}
+
+// A store (the webserver) must see wins another store (the CLI) wrote to the
+// shared DB file without first recording a win of its own.
+func TestReadsSeeWinsRecordedByAnotherStore(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "db.json")
+
+	reader := openStore(t, path)
+	writer := openStore(t, path)
+
+	tests.AssertNoError(t, writer.RecordWin("Bob"))
+	tests.AssertNoError(t, writer.RecordWin("Bob"))
+	tests.AssertNoError(t, writer.RecordWin("Alice"))
+
+	t.Run("GetPlayerScore", func(t *testing.T) {
+		tests.AssertScoreEquals(t, reader.GetPlayerScore("Bob"), 2)
+		tests.AssertScoreEquals(t, reader.GetPlayerScore("Alice"), 1)
+		tests.AssertScoreEquals(t, reader.GetPlayerScore("Nobody"), 0)
+	})
+
+	t.Run("GetLeague", func(t *testing.T) {
+		tests.AssertLeague(t, reader.GetLeague(), engine.League{{Name: "Bob", Wins: 2}, {Name: "Alice", Wins: 1}})
+	})
+}
+
+// Two stores (two processes, each with its own mutex) recording wins
+// concurrently on one DB file must not lose any of them.
+func TestConcurrentRecordWinAcrossStoresLosesNoWins(t *testing.T) {
+	const winsPerStore = 50
+
+	path := filepath.Join(t.TempDir(), "db.json")
+	stores := []*PlayerStore{openStore(t, path), openStore(t, path)}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, len(stores)*winsPerStore)
+	for _, store := range stores {
+		for range winsPerStore {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				errs <- store.RecordWin("Alice")
+			}()
+		}
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		tests.AssertNoError(t, err)
+	}
+
+	reopened := openStore(t, path)
+	tests.AssertScoreEquals(t, reopened.GetPlayerScore("Alice"), len(stores)*winsPerStore)
 }
 
 // If the db file cannot be re-read under the lock, the win is dropped: the
@@ -107,8 +162,18 @@ func TestRecordWinWhenDBCannotBeReRead(t *testing.T) {
 				wantEntries = 0
 			}
 
-			if len(entries) != wantEntries {
-				t.Errorf("directory has %d entries, want %d (leftover temp file?)", len(entries), wantEntries)
+			// The sidecar lock file is expected (docs/adr/0001); anything else is a leftover.
+			lockName := filepath.Base(path) + ".lock"
+			gotEntries := 0
+			for _, entry := range entries {
+				if entry.Name() != lockName {
+					gotEntries++
+				}
+			}
+
+			if gotEntries != wantEntries {
+				t.Errorf("directory has %d entries besides %s, want %d (leftover temp file?)",
+					gotEntries, lockName, wantEntries)
 			}
 
 			if tc.wantDir {

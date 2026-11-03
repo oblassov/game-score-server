@@ -8,7 +8,10 @@ import (
 	"testing"
 
 	"github.com/oblassov/game-score-server/internal/app/cli"
+	"github.com/oblassov/game-score-server/internal/storage/filesystem"
 )
+
+const dbFileName = filesystem.DefaultDBFileName
 
 type failingReader struct{ err error }
 
