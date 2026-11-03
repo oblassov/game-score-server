@@ -95,6 +95,8 @@ type GameSpy struct {
 	BlindAlert   []byte
 	FinishCalled bool
 	FinishedWith string
+	FinishError  error
+	FinishCalls  []string
 }
 
 func (g *GameSpy) Start(numberOfPlayers int, out io.Writer) (stop func()) {
@@ -104,18 +106,29 @@ func (g *GameSpy) Start(numberOfPlayers int, out io.Writer) (stop func()) {
 	blindAlert := g.BlindAlert
 	g.mu.Unlock()
 
-	if _, err := out.Write(blindAlert); err != nil {
-		log.Println("couldn't write an alert: ", err)
+	if len(blindAlert) > 0 {
+		if _, err := out.Write(blindAlert); err != nil {
+			log.Println("couldn't write an alert: ", err)
+		}
 	}
 
 	return func() {}
 }
 
-func (g *GameSpy) Finish(winner string) {
+func (g *GameSpy) Finish(winner string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.FinishCalled = true
 	g.FinishedWith = winner
+	g.FinishCalls = append(g.FinishCalls, winner)
+
+	return g.FinishError
+}
+
+func (g *GameSpy) GetFinishCalls() []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return append([]string(nil), g.FinishCalls...)
 }
 
 func (g *GameSpy) GetStartedWith() int {

@@ -130,27 +130,46 @@
 		declareWinner.hidden = true;
 		gameEndContainer.hidden = true;
 
+		const blindPrefix = 'Blind is now ';
+		let conn = null;
+		let gameStarted = false;
+
 		document.getElementById('start-game').addEventListener('click', () => {
 			startGame.hidden = true;
 			declareWinner.hidden = false;
 
 			const numberOfPlayers = document.getElementById('player-count').value;
 
+			if (conn && conn.readyState === WebSocket.OPEN) {
+				conn.send(numberOfPlayers);
+				return;
+			}
+
 			if (window['WebSocket']) {
-				const conn = new WebSocket('ws://' + document.location.host + '/ws');
+				conn = new WebSocket('ws://' + document.location.host + '/ws');
+				gameStarted = false;
 
 				submitWinnerButton.onclick = () => {
 					conn.send(winnerInput.value);
-					gameEndContainer.hidden = false;
-					gameContainer.hidden = true;
 				};
 
-				conn.onclose = () => {
-					blindContainer.innerText = 'Connection closed';
+				conn.onclose = (evt) => {
+					if (evt.code === 1000) {
+						gameEndContainer.hidden = false;
+						gameContainer.hidden = true;
+					} else {
+						blindContainer.innerText = 'Connection closed';
+					}
 				};
 
 				conn.onmessage = (evt) => {
 					blindContainer.innerText = evt.data;
+					if (evt.data.startsWith(blindPrefix)) {
+						gameStarted = true;
+					} else if (!gameStarted) {
+						startGame.hidden = false;
+						declareWinner.hidden = true;
+					}
 				};
 
 				conn.onopen = () => {

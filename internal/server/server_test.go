@@ -5,16 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -195,6 +196,103 @@ func TestStoreWinsTrimsName(t *testing.T) {
 
 	tests.AssertStatus(t, response, http.StatusAccepted)
 	tests.AssertPlayerWin(t, &store, "Alice")
+}
+
+func TestPOSTPlayersContract(t *testing.T) {
+	cases := []struct {
+		name     string
+		path     string
+		file     string
+		wantWins []string
+	}{
+		{name: "blank", path: "%20", file: "players-post-blank.json"},
+		{name: "invalid utf-8", path: "%FF", file: "players-post-invalid-utf8.json"},
+		{name: "NUL control character", path: "Al%00ice", file: "players-post-control.json"},
+		{name: "ESC control character", path: "Al%1Bice", file: "players-post-control.json"},
+		{name: "trailing slash", path: "Alice/", file: "players-post-slash.json"},
+		{name: "inner slash", path: "a/b", file: "players-post-slash.json"},
+		{name: "too long", path: strings.Repeat("a", 65), file: "players-post-too-long.json"},
+		{
+			name: "max length", path: strings.Repeat("a", 64), file: "players-post-max-length.json",
+			wantWins: []string{strings.Repeat("a", 64)},
+		},
+		{name: "padded", path: "%20Alice%20", file: "players-post-padded.json", wantWins: []string{"Alice"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := readAPIContract(t, tc.file)
+			store := tests.StubPlayerStore{Scores: map[string]int{}}
+			playerServer := mustMakePlayerServer(t, &store, tests.DummyGame)
+			response := httptest.NewRecorder()
+
+			playerServer.ServeHTTP(response, newPostWinRequest(tc.path))
+
+			tests.AssertStatus(t, response, want.Status)
+			tests.AssertResponseBody(t, response.Body.String(), want.Body)
+
+			if !reflect.DeepEqual(store.WinCalls, tc.wantWins) {
+				t.Errorf("recorded wins %q, want %q", store.WinCalls, tc.wantWins)
+			}
+		})
+	}
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
+}
+
+func TestPOSTPlayersLogsInvalidNameReason(t *testing.T) {
+	cases := []struct {
+		name       string
+		path       string
+		wantReason string
+	}{
+		{name: "blank", path: "%20", wantReason: engine.ErrBlankName.Error()},
+		{name: "slash", path: "Alice/", wantReason: engine.ErrSlashName.Error()},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := &lockedBuffer{}
+			prevOut := log.Writer()
+			log.SetOutput(logs)
+			t.Cleanup(func() { log.SetOutput(prevOut) })
+
+			playerServer := mustMakePlayerServer(t, &tests.StubPlayerStore{}, tests.DummyGame)
+			playerServer.ServeHTTP(httptest.NewRecorder(), newPostWinRequest(tc.path))
+
+			if got := logs.String(); !strings.Contains(got, tc.wantReason) {
+				t.Errorf("log %q does not contain the reason %q", got, tc.wantReason)
+			}
+		})
+	}
+}
+
+func TestGETLeagueNilFromStore(t *testing.T) {
+	want := readAPIContract(t, "league-empty.json")
+	playerServer := mustMakePlayerServer(t, &tests.StubPlayerStore{League: nil}, tests.DummyGame)
+	response := httptest.NewRecorder()
+
+	playerServer.ServeHTTP(response, newLeagueRequest())
+
+	tests.AssertStatus(t, response, want.Status)
+	tests.AssertResponseBody(t, response.Body.String(), want.Body)
 }
 
 func TestGame(t *testing.T) {
@@ -443,6 +541,98 @@ func TestWebSocketClosedAfterGameFinishes(t *testing.T) {
 	assertServerClosesWS(t, ws)
 }
 
+// readUntilError reads messages until ReadMessage fails and returns that
+// error, failing (never hanging) when the socket stays open for a second.
+func readUntilError(t *testing.T, ws *websocket.Conn) error {
+	t.Helper()
+
+	if err := ws.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("could not set read deadline: %v", err)
+	}
+
+	for {
+		if _, _, err := ws.ReadMessage(); err != nil {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				t.Fatal("server kept the websocket open")
+			}
+
+			return err
+		}
+	}
+}
+
+func TestWebSocketCloseCodeAfterGame(t *testing.T) {
+	t.Run("dropped client that stops ponging", func(t *testing.T) {
+		ws := dialKeepaliveWS(t, newKeepaliveServer(t, &tests.GameSpy{}))
+
+		ws.SetPingHandler(func(string) error { return nil })
+
+		writeMessage(t, ws, "3")
+
+		err := readUntilError(t, ws)
+
+		var closeErr *websocket.CloseError
+		if errors.As(err, &closeErr) && closeErr.Code == websocket.CloseNormalClosure {
+			t.Errorf("got a normal closure %v after dropping a silent client, want an abnormal end", err)
+		}
+	})
+
+	t.Run("saved win", func(t *testing.T) {
+		testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, &tests.GameSpy{}))
+		defer testServer.Close()
+
+		ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+		defer func() { _ = ws.Close() }()
+
+		writeMessage(t, ws, "3")
+		writeMessage(t, ws, "Ruth")
+
+		err := readUntilError(t, ws)
+
+		var closeErr *websocket.CloseError
+		if !errors.As(err, &closeErr) {
+			t.Fatalf("got error %v, want a *websocket.CloseError", err)
+		}
+
+		if closeErr.Code != websocket.CloseNormalClosure {
+			t.Errorf("got close code %d, want %d", closeErr.Code, websocket.CloseNormalClosure)
+		}
+	})
+
+	t.Run("failed save", func(t *testing.T) {
+		game := &tests.GameSpy{FinishError: errors.New("disk full")}
+		testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+		defer testServer.Close()
+
+		ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+		defer func() { _ = ws.Close() }()
+
+		writeMessage(t, ws, "3")
+		writeMessage(t, ws, "Ruth")
+
+		msg := readTextMessage(t, ws)
+		for strings.HasPrefix(msg, "Blind is now ") {
+			msg = readTextMessage(t, ws)
+		}
+
+		if msg != engine.RecordWinFailedMsg {
+			t.Errorf("got message %q, want %q", msg, engine.RecordWinFailedMsg)
+		}
+
+		if err := ws.SetReadDeadline(time.Now().Add(200 * time.Millisecond)); err != nil {
+			t.Fatalf("could not set read deadline: %v", err)
+		}
+
+		if _, _, err := ws.ReadMessage(); err != nil {
+			var netErr net.Error
+			if !errors.As(err, &netErr) || !netErr.Timeout() {
+				t.Errorf("socket closed after a failed save: %v, want it to stay open", err)
+			}
+		}
+	})
+}
+
 type outputCapturingGame struct {
 	mu  sync.Mutex
 	out io.Writer
@@ -456,7 +646,7 @@ func (g *outputCapturingGame) Start(_ int, out io.Writer) (stop func()) {
 	return func() {}
 }
 
-func (g *outputCapturingGame) Finish(string) {}
+func (g *outputCapturingGame) Finish(string) error { return nil }
 
 func (g *outputCapturingGame) output() io.Writer {
 	g.mu.Lock()
@@ -487,25 +677,60 @@ func TestLateBlindAlertAfterGameEndsIsDropped(t *testing.T) {
 	}
 }
 
-type startRecorderGame struct {
-	started atomic.Bool
+var invalidPlayerCounts = []string{
+	"abc", "", "3 players",
+	"0", "1", "-1", "-5", "-100", "23", "100", "101", "1000000", "9223372036854775807",
 }
 
-func (g *startRecorderGame) Start(_ int, _ io.Writer) (stop func()) {
-	g.started.Store(true)
+// readTextMessage reads the next message, failing (never hanging) when none
+// arrives in time or the server closed the socket instead.
+func readTextMessage(t *testing.T, ws *websocket.Conn) string {
+	t.Helper()
 
-	return func() {}
+	if err := ws.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("could not set read deadline: %v", err)
+	}
+
+	_, msg, err := ws.ReadMessage()
+	if err != nil {
+		t.Fatalf("expected a text message, got %v", err)
+	}
+
+	return string(msg)
 }
 
-func (g *startRecorderGame) Finish(_ string) {}
+func assertWSMessage(t *testing.T, ws *websocket.Conn, want string) {
+	t.Helper()
 
+	if got := readTextMessage(t, ws); got != want {
+		t.Errorf("got message %q, want %q", got, want)
+	}
+}
+
+func assertFinishCalls(t *testing.T, game *tests.GameSpy, want ...string) {
+	t.Helper()
+
+	retryUntil(500*time.Millisecond, func() bool { return len(game.GetFinishCalls()) >= len(want) })
+
+	got := game.GetFinishCalls()
+	if len(got) != len(want) {
+		t.Fatalf("Finish calls = %q, want %q", got, want)
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Finish calls = %q, want %q", got, want)
+			return
+		}
+	}
+}
+
+// Rewritten for ADR 0002: a bad count used to close the socket (1003); now the
+// client gets the reason as a text message and is asked again.
 func TestWebSocketRejectsInvalidPlayerCount(t *testing.T) {
-	for _, count := range []string{
-		"abc", "", "3 players",
-		"0", "1", "-1", "-5", "-100", "23", "100", "101", "1000000", "9223372036854775807",
-	} {
+	for _, count := range invalidPlayerCounts {
 		t.Run(fmt.Sprintf("count %q", count), func(t *testing.T) {
-			game := &startRecorderGame{}
+			game := &tests.GameSpy{}
 			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
 			defer testServer.Close()
 
@@ -514,46 +739,58 @@ func TestWebSocketRejectsInvalidPlayerCount(t *testing.T) {
 
 			writeMessage(t, ws, count)
 
-			assertServerClosesWS(t, ws)
+			assertWSMessage(t, ws, engine.BadPlayerInputErrMsg)
 
-			if game.started.Load() {
+			if game.GetStartCalled() {
 				t.Error("game was started with an invalid player count")
 			}
 		})
 	}
 }
 
-func TestWebSocketInvalidPlayerCountSendsCloseReason(t *testing.T) {
-	for _, count := range []string{"abc", "", "0", "1", "23", "101"} {
+// Rewritten for ADR 0002 (was ...SendsCloseReason): after the reason message
+// the connection stays open and a valid count then a winner play the game.
+func TestWebSocketInvalidPlayerCountKeepsConnectionOpen(t *testing.T) {
+	for _, count := range invalidPlayerCounts {
 		t.Run(fmt.Sprintf("count %q", count), func(t *testing.T) {
-			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, &startRecorderGame{}))
+			game := &tests.GameSpy{}
+			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
 			defer testServer.Close()
 
 			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
 			defer func() { _ = ws.Close() }()
 
 			writeMessage(t, ws, count)
+			assertWSMessage(t, ws, engine.BadPlayerInputErrMsg)
 
-			if err := ws.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-				t.Fatalf("could not set read deadline: %v", err)
-			}
+			writeMessage(t, ws, "3")
+			writeMessage(t, ws, "Ruth")
 
-			_, _, err := ws.ReadMessage()
-
-			var closeErr *websocket.CloseError
-			if !errors.As(err, &closeErr) {
-				t.Fatalf("expected a websocket close frame, got %v", err)
-			}
-
-			if closeErr.Code != websocket.CloseUnsupportedData {
-				t.Errorf("close code = %d, want %d", closeErr.Code, websocket.CloseUnsupportedData)
-			}
-
-			if closeErr.Text != engine.BadPlayerInputErrMsg {
-				t.Errorf("close reason = %q, want %q", closeErr.Text, engine.BadPlayerInputErrMsg)
-			}
+			assertFinishCalls(t, game, "Ruth")
+			assertGameStartedWith(t, game, 3)
 		})
 	}
+}
+
+func TestWebSocketBadCountsThenGoodGame(t *testing.T) {
+	game := &tests.GameSpy{}
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+	defer func() { _ = ws.Close() }()
+
+	writeMessage(t, ws, "abc")
+	assertWSMessage(t, ws, engine.BadPlayerInputErrMsg)
+
+	writeMessage(t, ws, "1")
+	assertWSMessage(t, ws, engine.BadPlayerInputErrMsg)
+
+	writeMessage(t, ws, "3")
+	writeMessage(t, ws, "Ruth")
+
+	assertFinishCalls(t, game, "Ruth")
+	assertGameStartedWith(t, game, 3)
 }
 
 type finishSignalGame struct {
@@ -562,7 +799,11 @@ type finishSignalGame struct {
 
 func (g *finishSignalGame) Start(_ int, _ io.Writer) (stop func()) { return func() {} }
 
-func (g *finishSignalGame) Finish(winner string) { g.finished <- winner }
+func (g *finishSignalGame) Finish(winner string) error {
+	g.finished <- winner
+
+	return nil
+}
 
 type stopSignalGame struct {
 	stopped chan struct{}
@@ -572,7 +813,7 @@ func (g *stopSignalGame) Start(_ int, _ io.Writer) (stop func()) {
 	return func() { close(g.stopped) }
 }
 
-func (g *stopSignalGame) Finish(string) {}
+func (g *stopSignalGame) Finish(string) error { return nil }
 
 func TestWebSocketStopsGameAlertsWhenHandlerReturns(t *testing.T) {
 	cases := map[string]func(t *testing.T, ws *websocket.Conn){
@@ -583,10 +824,17 @@ func TestWebSocketStopsGameAlertsWhenHandlerReturns(t *testing.T) {
 				t.Fatalf("could not close the client websocket: %v", err)
 			}
 		},
-		"client sends a blank winner": func(t *testing.T, ws *websocket.Conn) {
+		// Rewritten for ADR 0002: a blank winner no longer ends the handler, so
+		// the client disconnecting after being re-prompted does.
+		"client disconnects after a blank winner": func(t *testing.T, ws *websocket.Conn) {
 			t.Helper()
 
 			writeMessage(t, ws, "  ")
+			assertWSMessage(t, ws, engine.ErrBlankName.Error())
+
+			if err := ws.Close(); err != nil {
+				t.Fatalf("could not close the client websocket: %v", err)
+			}
 		},
 		"game finishes normally": func(t *testing.T, ws *websocket.Conn) {
 			t.Helper()
@@ -642,7 +890,7 @@ func (g *flooderGame) Start(_ int, out io.Writer) (stop func()) {
 	}
 }
 
-func (g *flooderGame) Finish(string) {}
+func (g *flooderGame) Finish(string) error { return nil }
 
 func TestWebSocketStopDoesNotHangOnClientThatStoppedReading(t *testing.T) {
 	game := &flooderGame{stopReturned: make(chan struct{})}
@@ -684,31 +932,47 @@ func TestWebSocketClientDisconnectBeforeWinnerDoesNotFinishGame(t *testing.T) {
 	}
 }
 
+// assertBadWinnerRePrompts sends a valid count and the bad winner, expects the
+// reason as a text message with the connection still open, then plays on with
+// "Ruth" and checks Finish never saw the bad name.
+func assertBadWinnerRePrompts(t *testing.T, sent, wantMsg string) {
+	t.Helper()
+
+	game := &tests.GameSpy{}
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+	defer func() { _ = ws.Close() }()
+
+	writeMessage(t, ws, "3")
+	writeMessage(t, ws, sent)
+
+	assertWSMessage(t, ws, wantMsg)
+
+	if calls := game.GetFinishCalls(); len(calls) != 0 {
+		t.Errorf("Finish was called with %q for a bad winner name", calls)
+	}
+
+	writeMessage(t, ws, "Ruth")
+
+	assertFinishCalls(t, game, "Ruth")
+}
+
+// Rewritten for ADR 0002: a blank winner used to end the handler silently.
 func TestWebSocketBlankWinnerDoesNotFinishGame(t *testing.T) {
 	for name, blank := range map[string]string{
 		"empty message":       "",
 		"whitespace-only one": "  \t ",
+		"spaces only":         "  ",
 	} {
 		t.Run(name, func(t *testing.T) {
-			game := &finishSignalGame{finished: make(chan string, 1)}
-			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
-			defer testServer.Close()
-
-			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
-			defer func() { _ = ws.Close() }()
-
-			writeMessage(t, ws, "3")
-			writeMessage(t, ws, blank)
-
-			select {
-			case winner := <-game.finished:
-				t.Errorf("Finish was called with %q for a blank winner name", winner)
-			case <-time.After(500 * time.Millisecond):
-			}
+			assertBadWinnerRePrompts(t, blank, engine.ErrBlankName.Error())
 		})
 	}
 }
 
+// Rewritten for ADR 0002: an invalid UTF-8 winner used to end the handler silently.
 func TestWebSocketRejectsInvalidUTF8Winner(t *testing.T) {
 	for name, sent := range map[string]string{
 		"only an invalid byte":          "\xff",
@@ -716,23 +980,32 @@ func TestWebSocketRejectsInvalidUTF8Winner(t *testing.T) {
 		"truncated multibyte character": "Al\xe2\x82",
 	} {
 		t.Run(name, func(t *testing.T) {
-			game := &finishSignalGame{finished: make(chan string, 1)}
-			testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
-			defer testServer.Close()
-
-			ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
-			defer func() { _ = ws.Close() }()
-
-			writeMessage(t, ws, "3")
-			writeMessage(t, ws, sent)
-
-			select {
-			case winner := <-game.finished:
-				t.Errorf("Finish was called with %q for a winner name that is not valid UTF-8", winner)
-			case <-time.After(500 * time.Millisecond):
-			}
+			assertBadWinnerRePrompts(t, sent, engine.ErrInvalidUTF8Name.Error())
 		})
 	}
+}
+
+func TestWebSocketRejectsSlashInWinner(t *testing.T) {
+	assertBadWinnerRePrompts(t, "Al/ice", engine.ErrSlashName.Error())
+}
+
+func TestWebSocketFailedSaveAsksAgain(t *testing.T) {
+	game := &tests.GameSpy{FinishError: errors.New("disk full")}
+	testServer := httptest.NewServer(mustMakePlayerServer(t, &tests.StubPlayerStore{}, game))
+	defer testServer.Close()
+
+	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
+	defer func() { _ = ws.Close() }()
+
+	writeMessage(t, ws, "3")
+	writeMessage(t, ws, "Ruth")
+
+	assertWSMessage(t, ws, engine.RecordWinFailedMsg)
+
+	writeMessage(t, ws, "Ruth")
+
+	assertFinishCalls(t, game, "Ruth", "Ruth")
+	assertWSMessage(t, ws, engine.RecordWinFailedMsg)
 }
 
 func TestWebSocketTrimsPlayerCount(t *testing.T) {
@@ -884,8 +1157,10 @@ func TestWebSocketRejectsOversizedMessage(t *testing.T) {
 	}
 }
 
+// Rewritten for ADR 0002: names over 64 bytes are now refused, so the limit
+// is shrunk to engine.MaxPlayerNameBytes to keep testing a message exactly at it.
 func TestWebSocketAcceptsMessageAtReadLimit(t *testing.T) {
-	restore := server.SetWSReadLimitsForTest(5*time.Second, 5*time.Second, 1024)
+	restore := server.SetWSReadLimitsForTest(5*time.Second, 5*time.Second, engine.MaxPlayerNameBytes)
 	defer restore()
 
 	game := &finishSignalGame{finished: make(chan string, 1)}
@@ -895,7 +1170,7 @@ func TestWebSocketAcceptsMessageAtReadLimit(t *testing.T) {
 	ws := mustDialWS(t, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/ws")
 	defer func() { _ = ws.Close() }()
 
-	name := strings.Repeat("a", 1024)
+	name := strings.Repeat("a", engine.MaxPlayerNameBytes)
 
 	writeMessage(t, ws, "3")
 	writeMessage(t, ws, name)

@@ -1,7 +1,11 @@
 package texasholdem_test
 
 import (
+	"bytes"
+	"errors"
 	"io"
+	"log"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,13 +71,46 @@ func TestGame_StartReturnsStopThatCancelsAllAlerts(t *testing.T) {
 	}
 }
 
+// Rewritten for ADR 0002: Finish now returns the RecordWin error.
 func TestGame_Finish(t *testing.T) {
 	playerStore := &tests.StubPlayerStore{}
 	game := texasholdem.NewTexasHoldem(playerStore, tests.DummyBlindAlerter)
 	winner := "Ruth"
 
-	game.Finish(winner)
+	if err := game.Finish(winner); err != nil {
+		t.Errorf("Finish returned %v, want nil", err)
+	}
+
 	tests.AssertPlayerWin(t, playerStore, winner)
+}
+
+type failingRecordStore struct {
+	tests.StubPlayerStore
+	err error
+}
+
+func (s *failingRecordStore) RecordWin(string) error { return s.err }
+
+func TestGame_FinishReturnsAndLogsRecordWinError(t *testing.T) {
+	var logs bytes.Buffer
+
+	prevOut := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(prevOut) })
+
+	storeErr := errors.New("disk full")
+	game := texasholdem.NewTexasHoldem(&failingRecordStore{err: storeErr}, tests.DummyBlindAlerter)
+	winner := "Ruth"
+
+	err := game.Finish(winner)
+
+	if !errors.Is(err, storeErr) {
+		t.Errorf("Finish returned %v, want an error wrapping %v", err, storeErr)
+	}
+
+	if !strings.Contains(logs.String(), winner) {
+		t.Errorf("log %q does not contain the player name %q", logs.String(), winner)
+	}
 }
 
 func checkSchedulingCases(cases []tests.ScheduledAlert, t *testing.T, blindAlerter tests.SpyBlindAlerter) {

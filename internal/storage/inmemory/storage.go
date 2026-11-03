@@ -15,13 +15,13 @@ type PlayerStore struct {
 func (i *PlayerStore) GetPlayerScore(name string) int {
 	i.lock.RLock()
 	defer i.lock.RUnlock()
-	return i.store[name]
+	return i.store[engine.NormalizePlayerName(name)]
 }
 
 func (i *PlayerStore) RecordWin(name string) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
-	i.store[name]++
+	i.store[engine.NormalizePlayerName(name)]++
 	return nil
 }
 
@@ -29,7 +29,8 @@ func (i *PlayerStore) GetLeague() engine.League {
 	i.lock.RLock()
 	defer i.lock.RUnlock()
 
-	var league []engine.Player
+	// Non-nil even when empty, so the league encodes as [] rather than null.
+	league := make(engine.League, 0, len(i.store))
 
 	for name, wins := range i.store {
 		league = append(league, engine.Player{Name: name, Wins: wins})

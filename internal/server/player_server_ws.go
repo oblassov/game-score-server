@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	closeWriteTimeout = time.Second
 	// messageWriteTimeout bounds a single Write so a client that stopped
 	// reading cannot block the game (and the Alerter cancel barrier) forever.
 	messageWriteTimeout = 2 * time.Second
@@ -59,7 +58,12 @@ func newPlayerServerWS(w http.ResponseWriter, r *http.Request) *playerServerWS {
 
 // WaitForMsg reads one message, failing if none arrives within timeout.
 func (w *playerServerWS) WaitForMsg(timeout time.Duration) (string, error) {
-	if err := w.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	return w.waitForMsgUntil(time.Now().Add(timeout))
+}
+
+// waitForMsgUntil reads one message, failing if none arrives by deadline.
+func (w *playerServerWS) waitForMsgUntil(deadline time.Time) (string, error) {
+	if err := w.SetReadDeadline(deadline); err != nil {
 		return "", fmt.Errorf("setting websocket read deadline: %w", err)
 	}
 
@@ -87,7 +91,12 @@ func (w *playerServerWS) drainInput() {
 
 	_, err := io.CopyN(io.Discard, nc, maxDrainBytes)
 
-	if err != nil && !isExpectedDrainEnd(err) {
+	if err == nil {
+		log.Printf("drain hit its cap of %d bytes with input still unread", maxDrainBytes)
+		return
+	}
+
+	if !isExpectedDrainEnd(err) {
 		log.Println("couldn't drain the oversized message: ", err)
 	}
 }
@@ -109,34 +118,83 @@ func (w *playerServerWS) Close() error {
 	return w.Conn.Close()
 }
 
-// closeWithReason sends a close frame with the given code and reason so the
-// client sees why the connection ended instead of an abnormal closure.
-// WriteControl is safe to call concurrently with other writes.
-func (w *playerServerWS) closeWithReason(code int, reason string) {
-	msg := websocket.FormatCloseMessage(code, reason)
-	if err := w.WriteControl(websocket.CloseMessage, msg, time.Now().Add(closeWriteTimeout)); err != nil {
-		log.Println("couldn't send the websocket close frame: ", err)
-	}
+// CloseNormal sends a close frame with code 1000 so the client can tell a
+// finished game from a dropped connection. Like ping, it shares Write's mutex
+// and write deadline; once the wrapper is closed it does nothing.
+func (w *playerServerWS) CloseNormal() error {
+	msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+
+	return w.writeFrame(websocket.CloseMessage, msg, "close frame")
 }
 
-// Write sends p as a text message. Once the wrapper is closed the game is
-// over, so late messages are dropped silently.
-func (w *playerServerWS) Write(p []byte) (n int, err error) {
+// writeFrame is the one write path shared by Write, ping and CloseNormal: it
+// holds mu, sets the write deadline and writes one frame. Once the wrapper is
+// closed it drops the frame and returns nil. what names the frame in errors.
+func (w *playerServerWS) writeFrame(messageType int, data []byte, what string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.closed.Load() {
-		return len(p), nil
+		return nil
 	}
 
-	if deadlineErr := w.SetWriteDeadline(time.Now().Add(messageWriteTimeout)); deadlineErr != nil {
-		return 0, fmt.Errorf("setting websocket write deadline: %w", deadlineErr)
+	if err := w.SetWriteDeadline(time.Now().Add(messageWriteTimeout)); err != nil {
+		return fmt.Errorf("setting websocket write deadline: %w", err)
 	}
 
-	err = w.WriteMessage(websocket.TextMessage, p)
+	if err := w.WriteMessage(messageType, data); err != nil {
+		return fmt.Errorf("writing websocket %s: %w", what, err)
+	}
 
-	if err != nil {
-		return 0, fmt.Errorf("writing websocket message: %w", err)
+	return nil
+}
+
+// reply sends msg as a text message and reports whether it was written.
+func (w *playerServerWS) reply(msg string) bool {
+	if _, err := w.Write([]byte(msg)); err != nil {
+		log.Println("couldn't send the reply: ", err)
+		return false
+	}
+
+	return true
+}
+
+// startPings pings the client every period until the returned stop func is
+// called or a ping cannot be written. Pings share Write's mutex and write
+// deadline, so they never interleave with a blind alert.
+func (w *playerServerWS) startPings(period time.Duration) (stop func()) {
+	done := make(chan struct{})
+
+	go func() {
+		ticker := time.NewTicker(period)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if err := w.ping(); err != nil {
+					log.Println("couldn't ping the client: ", err)
+					return
+				}
+			}
+		}
+	}()
+
+	return sync.OnceFunc(func() { close(done) })
+}
+
+// ping sends one ping frame. Once the wrapper is closed it does nothing.
+func (w *playerServerWS) ping() error {
+	return w.writeFrame(websocket.PingMessage, nil, "ping")
+}
+
+// Write sends p as a text message. Once the wrapper is closed the game is
+// over, so late messages are dropped silently.
+func (w *playerServerWS) Write(p []byte) (int, error) {
+	if err := w.writeFrame(websocket.TextMessage, p, "message"); err != nil {
+		return 0, err
 	}
 
 	return len(p), nil

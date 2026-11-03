@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sort"
 	"sync"
@@ -22,6 +23,8 @@ type PlayerStore struct {
 	// db file itself can't carry the lock because every write renames a new
 	// inode over it.
 	lockFile *os.File
+	// closed is set by Close and guarded by lock.
+	closed bool
 }
 
 func PlayerStoreFromFile(path string) (*PlayerStore, func() error, error) {
@@ -57,41 +60,97 @@ func PlayerStoreFromFile(path string) (*PlayerStore, func() error, error) {
 func NewPlayerStore(file *os.File) (*PlayerStore, error) {
 
 	lockPath := file.Name() + ".lock"
-	lockFile, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o666)
 	if err != nil {
 		return nil, fmt.Errorf("problem opening lock file %s: %w", lockPath, err)
 	}
 
-	err = initializePlayerDBFile(file)
-
-	if err != nil {
+	// Seeding, loading and the merge persist all happen under one lock, so a
+	// concurrent store can't see or clobber a half-initialised db.
+	if err = lockExclusive(lockFile); err != nil {
 		return nil, errors.Join(
-			fmt.Errorf("problem initializing player db file: %w", err),
+			fmt.Errorf("couldn't lock the db: %w", err),
 			lockFile.Close(),
 		)
+	}
+
+	store, err := loadLocked(file, lockFile)
+
+	if unlockErr := unlock(lockFile); unlockErr != nil && err == nil {
+		err = fmt.Errorf("couldn't unlock the db: %w", unlockErr)
+	}
+
+	if err != nil {
+		return nil, errors.Join(err, lockFile.Close())
+	}
+
+	return store, nil
+
+}
+
+// loadLocked seeds and loads the db, then persists merged names. The caller
+// must hold the exclusive sidecar flock.
+func loadLocked(file, lockFile *os.File) (*PlayerStore, error) {
+	if err := initializePlayerDBFile(file); err != nil {
+		return nil, fmt.Errorf("problem initializing player db file: %w", err)
 	}
 
 	league, err := engine.NewLeague(file)
 
 	if err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("problem loading player store from file %s: %w", file.Name(), err),
-			lockFile.Close(),
-		)
+		return nil, fmt.Errorf("problem loading player store from file %s: %w", file.Name(), err)
 	}
 
-	return &PlayerStore{
+	store := &PlayerStore{
 		database: json.NewEncoder(&tape{file}),
 		league:   league,
 		path:     file.Name(),
 		lockFile: lockFile,
-	}, nil
+	}
 
+	if err := store.persistMergedNames(); err != nil {
+		return nil, err
+	}
+
+	return store, nil
+}
+
+// persistMergedNames rewrites the db when it holds padded or duplicate names,
+// so the merge happens once rather than on every load. The caller must hold
+// the exclusive sidecar flock.
+func (f *PlayerStore) persistMergedNames() error {
+	// Re-read under the lock so another store's newer rows aren't overwritten.
+	league, err := f.readLeagueRaw()
+	if err != nil {
+		return fmt.Errorf("couldn't re-read the db: %w", err)
+	}
+
+	merged, changed := mergePaddedNames(league)
+	if !changed {
+		return nil
+	}
+
+	if err := f.database.Encode(merged); err != nil {
+		return fmt.Errorf("couldn't persist merged player names: %w", err)
+	}
+
+	f.league = merged
+
+	return nil
 }
 
 // Close releases the store's lock file. It does not close the db file passed
 // to NewPlayerStore.
+// It waits for in-flight reads and writes, and calling it again returns nil.
 func (f *PlayerStore) Close() error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	if f.closed {
+		return nil
+	}
+	f.closed = true
+
 	if err := f.lockFile.Close(); err != nil {
 		return fmt.Errorf("couldn't close lock file %s: %w", f.lockFile.Name(), err)
 	}
@@ -160,7 +219,7 @@ func (f *PlayerStore) GetPlayerScore(name string) int {
 	defer f.lock.RUnlock()
 
 	league := f.currentLeague()
-	player := league.Find(name)
+	player := league.Find(engine.NormalizePlayerName(name))
 
 	if player != nil {
 		return player.Wins
@@ -171,10 +230,12 @@ func (f *PlayerStore) GetPlayerScore(name string) int {
 
 // currentLeague returns a copy of the league as it is on disk, so wins written
 // by another store show up. The caller must hold f.lock. If the file can't be
-// read it falls back to the last league this store read or wrote successfully.
+// read it falls back to the league this store loaded at startup or last wrote
+// in RecordWin; successful reads do not refresh that cache.
 func (f *PlayerStore) currentLeague() engine.League {
 	league, err := f.readLeagueShared()
 	if err != nil {
+		log.Printf("couldn't re-read the league from %s, serving the cached one: %v", f.path, err)
 		league = f.league
 	}
 
@@ -219,6 +280,7 @@ func (f *PlayerStore) RecordWin(name string) error {
 		return fmt.Errorf("couldn't re-read the db: %w", err)
 	}
 
+	name = engine.NormalizePlayerName(name)
 	player := league.Find(name)
 
 	if player != nil {
@@ -236,7 +298,20 @@ func (f *PlayerStore) RecordWin(name string) error {
 	return nil
 }
 
+// readLeague reads the db with padded and duplicate names merged.
 func (f *PlayerStore) readLeague() (engine.League, error) {
+	league, err := f.readLeagueRaw()
+	if err != nil {
+		return nil, err
+	}
+
+	merged, _ := mergePaddedNames(league)
+
+	return merged, nil
+}
+
+// readLeagueRaw reads the db rows exactly as stored.
+func (f *PlayerStore) readLeagueRaw() (engine.League, error) {
 	// tape.Write renames a new file over path, so the held *os.File points at
 	// a stale inode; read by path instead.
 	data, err := os.ReadFile(f.path)
@@ -257,4 +332,30 @@ func (f *PlayerStore) readLeague() (engine.League, error) {
 	}
 
 	return league, nil
+}
+
+// mergePaddedNames normalises every row's name and sums the wins of rows whose
+// names then match. It reports whether any row changed, so callers can persist
+// the merged league.
+func mergePaddedNames(league engine.League) (engine.League, bool) {
+	merged := make(engine.League, 0, len(league))
+	changed := false
+
+	for _, row := range league {
+		name := engine.NormalizePlayerName(row.Name)
+		if name != row.Name {
+			changed = true
+		}
+
+		if existing := merged.Find(name); existing != nil {
+			existing.Wins += row.Wins
+			changed = true
+
+			continue
+		}
+
+		merged = append(merged, engine.Player{Name: name, Wins: row.Wins})
+	}
+
+	return merged, changed
 }

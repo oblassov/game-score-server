@@ -1,9 +1,71 @@
 package inmemory
 
 import (
+	"encoding/json"
+	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/oblassov/game-score-server/internal/engine"
 )
+
+func TestInMemoryGetLeagueEmptyIsNotNil(t *testing.T) {
+	league := NewInMemoryPlayerStore().GetLeague()
+
+	if league == nil {
+		t.Error("got a nil league, want a non-nil empty one")
+	}
+
+	got, err := json.Marshal(league)
+	if err != nil {
+		t.Fatalf("couldn't marshal the league: %v", err)
+	}
+	if string(got) != "[]" {
+		t.Errorf("got %s, want []", got)
+	}
+}
+
+// ADR 0002: the store trims names itself so no caller can skip it.
+func TestStoresTrimPlayerNames(t *testing.T) {
+	t.Run("padded name is recorded trimmed", func(t *testing.T) {
+		store := NewInMemoryPlayerStore()
+		if err := store.RecordWin(" Alice "); err != nil {
+			t.Fatalf("did not expect an error, got %v", err)
+		}
+
+		want := engine.League{{Name: "Alice", Wins: 1}}
+		if got := store.GetLeague(); !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("padded lookup finds the trimmed name", func(t *testing.T) {
+		store := NewInMemoryPlayerStore()
+		if err := store.RecordWin("Alice"); err != nil {
+			t.Fatalf("did not expect an error, got %v", err)
+		}
+
+		if got := store.GetPlayerScore(" Alice "); got != 1 {
+			t.Errorf("got %d, want 1", got)
+		}
+	})
+
+	t.Run("padded and plain wins share one row", func(t *testing.T) {
+		store := NewInMemoryPlayerStore()
+		for _, name := range []string{"Alice", "Alice", "\tAlice\n"} {
+			if err := store.RecordWin(name); err != nil {
+				t.Fatalf("did not expect an error, got %v", err)
+			}
+		}
+
+		if got := store.GetPlayerScore("Alice"); got != 3 {
+			t.Errorf("got %d wins, want 3", got)
+		}
+		if got := store.GetLeague(); len(got) != 1 {
+			t.Errorf("got %d league rows, want 1: %v", len(got), got)
+		}
+	})
+}
 
 func TestGetLeagueSortedByWinsDescending(t *testing.T) {
 	store := NewInMemoryPlayerStore()

@@ -1,6 +1,7 @@
 package texasholdem
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"time"
@@ -40,8 +41,12 @@ func (p *TexasHoldem) Start(numberOfPlayers int, alertsDestination io.Writer) (s
 	}
 }
 
-func (p *TexasHoldem) Finish(winner string) {
+func (p *TexasHoldem) Finish(winner string) error {
 	if err := p.store.RecordWin(winner); err != nil {
-		log.Printf("couldn't record the win: %v", err)
+		log.Printf("couldn't record win for %q: %v", winner, err)
+
+		return fmt.Errorf("record win for %q: %w", winner, err)
 	}
+
+	return nil
 }

@@ -4,17 +4,20 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/oblassov/game-score-server/internal/app/cli"
+	"github.com/oblassov/game-score-server/internal/engine"
 	"github.com/oblassov/game-score-server/tests"
 )
 
 func TestCLI(t *testing.T) {
 
-	t.Run("it prints an error when a non numeric value is entered and does not start the game", func(t *testing.T) {
+	// Rewritten for ADR 0002: a bad answer is followed by a new prompt instead of ending the run.
+	t.Run("it prints an error when a non numeric value is entered, asks again and does not start the game", func(t *testing.T) {
 		stdOut := &bytes.Buffer{}
 		in := userSends("pies")
 		game := &tests.GameSpy{}
@@ -22,10 +25,11 @@ func TestCLI(t *testing.T) {
 		cliApp := cli.NewCLI(in, stdOut, game)
 		cliApp.PlayPoker()
 
-		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg+"\n", cli.PlayerPrompt)
 		assertGameNotStarted(t, game)
 	})
 
+	// Rewritten for ADR 0002: "Chris wins" is now read as a second (bad) count, not ignored.
 	for _, count := range []string{"0", "1", "-1", "-100", "23", "100", "101", "1000000", "9223372036854775807"} {
 		t.Run("it rejects the out of range player count "+count+" and does not start the game", func(t *testing.T) {
 			stdOut := &bytes.Buffer{}
@@ -35,7 +39,10 @@ func TestCLI(t *testing.T) {
 			cliApp := cli.NewCLI(in, stdOut, game)
 			cliApp.PlayPoker()
 
-			assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg)
+			assertMessagesSentToUser(t, stdOut,
+				cli.PlayerPrompt, cli.BadPlayerInputErrMsg+"\n",
+				cli.PlayerPrompt, cli.BadPlayerInputErrMsg+"\n",
+				cli.PlayerPrompt)
 			assertGameNotStarted(t, game)
 			assertGameNotFinished(t, game)
 		})
@@ -85,6 +92,7 @@ func TestCLI(t *testing.T) {
 		assertFinishCalledWith(t, game, "Cleo")
 	})
 
+	// Rewritten for ADR 0002: the error is newline-terminated (and the CLI keeps reading).
 	t.Run("it prints an error when a winner is declared incorrectly", func(t *testing.T) {
 		in := userSends("7", "Cleo kills")
 		stdOut := &bytes.Buffer{}
@@ -94,9 +102,108 @@ func TestCLI(t *testing.T) {
 		cliApp.PlayPoker()
 
 		assertGameNotFinished(t, game)
-		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadWinnerInputErrMsg)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadWinnerInputErrMsg+"\n")
 	})
 
+}
+
+func TestCLIRePromptsOnBadPlayerCount(t *testing.T) {
+	for _, count := range []string{"abc", "1", "23", ""} {
+		t.Run("count "+count, func(t *testing.T) {
+			stdOut := &bytes.Buffer{}
+			game := &tests.GameSpy{}
+
+			err := cli.NewCLI(userSends(count, "3", "Chris wins"), stdOut, game).PlayPoker()
+
+			tests.AssertNoError(t, err)
+			assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg+"\n", cli.PlayerPrompt)
+			assertGameStartedWith(t, game, 3)
+			assertFinishCalls(t, game, "Chris")
+		})
+	}
+}
+
+func TestCLIRePromptsOnBadWinner(t *testing.T) {
+	stdOut := &bytes.Buffer{}
+	game := &tests.GameSpy{}
+
+	err := cli.NewCLI(userSends("3", "Chris loses", "Chris wins"), stdOut, game).PlayPoker()
+
+	tests.AssertNoError(t, err)
+	assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadWinnerInputErrMsg+"\n")
+	assertGameStartedWith(t, game, 3)
+	assertFinishCalls(t, game, "Chris")
+}
+
+func TestCLIRePromptsOnInvalidWinnerName(t *testing.T) {
+	stdOut := &bytes.Buffer{}
+	game := &tests.GameSpy{}
+
+	err := cli.NewCLI(userSends("3", "Al/ice wins", "Chris wins"), stdOut, game).PlayPoker()
+
+	tests.AssertNoError(t, err)
+
+	if want := engine.ErrSlashName.Error() + "\n"; !strings.Contains(stdOut.String(), want) {
+		t.Errorf("stdout %q does not contain %q", stdOut.String(), want)
+	}
+
+	assertFinishCalls(t, game, "Chris")
+}
+
+func TestCLIFailedSaveAsksAgain(t *testing.T) {
+	stdOut := &bytes.Buffer{}
+	game := &tests.GameSpy{FinishError: errors.New("disk full")}
+
+	err := cli.NewCLI(userSends("3", "Chris wins", "Chris wins"), stdOut, game).PlayPoker()
+
+	tests.AssertNoError(t, err)
+
+	want := engine.RecordWinFailedMsg + "\n"
+	if got := strings.Count(stdOut.String(), want); got != 2 {
+		t.Errorf("stdout %q contains %q %d times, want 2", stdOut.String(), want, got)
+	}
+
+	assertFinishCalls(t, game, "Chris", "Chris")
+}
+
+func TestCLIOverlongLineIsBadInput(t *testing.T) {
+	overlong := strings.Repeat("x", 70000)
+
+	t.Run("as the player count", func(t *testing.T) {
+		stdOut := &bytes.Buffer{}
+		game := &tests.GameSpy{}
+
+		err := cli.NewCLI(userSends(overlong, "3", "Chris wins"), stdOut, game).PlayPoker()
+
+		tests.AssertNoError(t, err)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg+"\n", cli.PlayerPrompt)
+		assertGameStartedWith(t, game, 3)
+		assertFinishCalls(t, game, "Chris")
+	})
+
+	t.Run("as the first winner line", func(t *testing.T) {
+		stdOut := &bytes.Buffer{}
+		game := &tests.GameSpy{}
+
+		err := cli.NewCLI(userSends("3", overlong, "Chris wins"), stdOut, game).PlayPoker()
+
+		tests.AssertNoError(t, err)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadWinnerInputErrMsg+"\n")
+		assertGameStartedWith(t, game, 3)
+		assertFinishCalls(t, game, "Chris")
+	})
+}
+
+func TestCLIEOFAfterPlayerCountEndsTheGameQuietly(t *testing.T) {
+	stdOut := &bytes.Buffer{}
+	game := &tests.GameSpy{}
+
+	err := cli.NewCLI(userSends("3"), stdOut, game).PlayPoker()
+
+	tests.AssertNoError(t, err)
+	assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt)
+	assertGameStartedWith(t, game, 3)
+	assertGameNotFinished(t, game)
 }
 
 func TestCLIPlayerCountTrimsWhitespace(t *testing.T) {
@@ -120,6 +227,8 @@ func TestCLIPlayerCountTrimsWhitespace(t *testing.T) {
 	}
 }
 
+// Rewritten for ADR 0002: the bad line is answered with a newline-terminated
+// message and the CLI keeps reading, so the next good line finishes the game.
 func TestCLIRejectsInvalidUTF8Winner(t *testing.T) {
 	for name, sent := range map[string]string{
 		"only an invalid byte":          "\xff wins",
@@ -130,11 +239,21 @@ func TestCLIRejectsInvalidUTF8Winner(t *testing.T) {
 			stdOut := &bytes.Buffer{}
 			game := &tests.GameSpy{}
 
-			cli.NewCLI(userSends("3", sent), stdOut, game).PlayPoker()
+			err := cli.NewCLI(userSends("3", sent, "Chris wins"), stdOut, game).PlayPoker()
 
-			assertGameNotFinished(t, game)
-			assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadWinnerInputErrMsg)
+			tests.AssertNoError(t, err)
+			assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadWinnerInputErrMsg+"\n")
+			assertFinishCalls(t, game, "Chris")
 		})
+	}
+}
+
+func assertFinishCalls(t testing.TB, game *tests.GameSpy, want ...string) {
+	t.Helper()
+
+	got := game.GetFinishCalls()
+	if !slices.Equal(got, want) {
+		t.Errorf("Finish calls = %q, want %q", got, want)
 	}
 }
 
@@ -236,14 +355,16 @@ func TestCLIReadErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("plain EOF is still reported as bad input without an error", func(t *testing.T) {
+	// Rewritten for ADR 0002: EOF ends the game quietly instead of being reported as bad input.
+	t.Run("plain EOF ends the game quietly without an error", func(t *testing.T) {
 		stdOut := &bytes.Buffer{}
 		game := &tests.GameSpy{}
 
 		err := cli.NewCLI(userSends(), stdOut, game).PlayPoker()
 
 		tests.AssertNoError(t, err)
-		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt, cli.BadPlayerInputErrMsg)
+		assertMessagesSentToUser(t, stdOut, cli.PlayerPrompt)
+		assertGameNotStarted(t, game)
 	})
 }
 

@@ -12,9 +12,12 @@ const (
 // is not a number or is outside MinPlayers..MaxPlayers.
 const BadPlayerInputErrMsg = "bad value received for number of players, please try again with a number from 2 to 22"
 
+// RecordWinFailedMsg is the message sent back when a win couldn't be saved.
+const RecordWinFailedMsg = "couldn't record the win, please try again"
+
 type Game interface {
 	// Start begins the game and returns a non-nil stop func that cancels any
 	// pending blind alerts. Callers may call stop more than once.
 	Start(numberOfPlayers int, alertDestination io.Writer) (stop func())
-	Finish(winner string)
+	Finish(winner string) error
 }
